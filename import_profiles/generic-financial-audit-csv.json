@@ -1,0 +1,16 @@
+{
+  "created_at_utc": "2026-05-08T00:00:00+00:00",
+  "description": "Sample profile for CSV exports with txn_ref, acc_id, amt, ccy, and counterparty_name columns.",
+  "display_name": "Generic financial audit CSV",
+  "profile_id": "generic-financial-audit-csv",
+  "schema_version": 1,
+  "source_to_canonical": {
+    "acc_id": "account_id",
+    "amt": "amount",
+    "ccy": "currency",
+    "counterparty_name": "counterparty",
+    "date": "transaction_date",
+    "txn_ref": "transaction_id"
+  },
+  "updated_at_utc": "2026-05-08T00:00:00+00:00"
+}

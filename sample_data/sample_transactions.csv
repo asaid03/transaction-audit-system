@@ -1,0 +1,7 @@
+transaction_id,transaction_date,account_id,amount,currency,counterparty
+TXN-001,2026-04-01,ACC-100,125.50,GBP,Office Supplies Ltd
+TXN-002,2026-04-02,ACC-100,15000.00,GBP,Northstar Consulting
+TXN-003,not-a-date,ACC-200,82.10,USD,Metro Travel
+TXN-003,2026-04-03,ACC-200,82.10,USD,Metro Travel
+TXN-005,2026-04-04,ACC-300,0,EUR,Internal Adjustment
+TXN-006,2026-04-05,ACC-400,940.25,AED,Global Vendor FZE
