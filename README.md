@@ -83,31 +83,33 @@ Common alternatives such as `id`, `date`, `acct`, `value`, `ccy`, and `vendor` a
 
 ## Run Locally
 
-This project lives in:
-
-```text
-C:\Projects\transaction-audit-system
-```
-
-Use the project-local environment at:
-
-```text
-C:\Projects\transaction-audit-system\.venv
-```
-
-If the environment already exists, run the app:
+Clone the repo and enter the project folder:
 
 ```powershell
-.\run_app.ps1
+git clone https://github.com/asaid03/transaction-audit-system.git
+cd transaction-audit-system
 ```
 
-To recreate dependencies manually:
+Create and activate a local virtual environment:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 ```
 
-Run the Streamlit app:
+Install dependencies:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+Run the app:
+
+```powershell
+streamlit run app.py
+```
+
+If your shell does not have the virtual environment activated, run commands through the environment Python:
 
 ```powershell
 .\.venv\Scripts\python.exe -m streamlit run app.py
