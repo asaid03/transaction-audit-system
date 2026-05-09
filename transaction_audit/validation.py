@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -66,22 +67,18 @@ class PreparedTransactions:
 
 
 def check_required_columns(transactions: pd.DataFrame) -> list[ValidationIssue]:
-    issues = []
     missing_columns = [column for column in REQUIRED_COLUMNS if column not in transactions.columns]
-
-    for column in missing_columns:
-        issues.append(
-            ValidationIssue(
-                row_number=None,
-                transaction_id=None,
-                field=column,
-                issue_type="missing_column",
-                severity="error",
-                message=f"Required column '{column}' is missing.",
-            )
+    return [
+        make_issue(
+            row_number=None,
+            transaction_id=None,
+            field=column,
+            issue_type="missing_column",
+            severity="error",
+            message=f"Required column '{column}' is missing.",
         )
-
-    return issues
+        for column in missing_columns
+    ]
 
 
 def prepare_transactions(transactions: pd.DataFrame, config: ValidationConfig) -> PreparedTransactions:
@@ -104,12 +101,12 @@ def prepare_transactions(transactions: pd.DataFrame, config: ValidationConfig) -
 def check_missing_values(original: pd.DataFrame, checked: pd.DataFrame) -> list[ValidationIssue]:
     issues = []
     for column in REQUIRED_COLUMNS:
-        missing_mask = original[column].isna() | original[column].astype(str).str.strip().eq("")
+        missing_mask = _missing_mask(original[column])
         for position, row in rows_matching(checked, missing_mask):
             issues.append(
-                ValidationIssue(
+                make_issue(
                     row_number=position,
-                    transaction_id=_clean_optional(row["transaction_id"]),
+                    row=row,
                     field=column,
                     issue_type="missing_value",
                     severity="error",
@@ -132,9 +129,9 @@ def check_amounts(
 
     for position, row in rows_matching(checked, invalid_amount):
         issues.append(
-            ValidationIssue(
+            make_issue(
                 row_number=position,
-                transaction_id=_clean_optional(row["transaction_id"]),
+                row=row,
                 field="amount",
                 issue_type="invalid_amount",
                 severity="error",
@@ -144,9 +141,9 @@ def check_amounts(
 
     for position, row in rows_matching(checked, zero_amount):
         issues.append(
-            ValidationIssue(
+            make_issue(
                 row_number=position,
-                transaction_id=_clean_optional(row["transaction_id"]),
+                row=row,
                 field="amount",
                 issue_type="zero_amount",
                 severity="warning",
@@ -156,9 +153,9 @@ def check_amounts(
 
     for position, row in rows_matching(checked, large_amount):
         issues.append(
-            ValidationIssue(
+            make_issue(
                 row_number=position,
-                transaction_id=_clean_optional(row["transaction_id"]),
+                row=row,
                 field="amount",
                 issue_type="large_amount",
                 severity="warning",
@@ -176,9 +173,9 @@ def check_dates(original: pd.DataFrame, checked: pd.DataFrame) -> list[Validatio
 
     for position, row in rows_matching(checked, invalid_date):
         issues.append(
-            ValidationIssue(
+            make_issue(
                 row_number=position,
-                transaction_id=_clean_optional(row["transaction_id"]),
+                row=row,
                 field="transaction_date",
                 issue_type="invalid_date",
                 severity="error",
@@ -200,9 +197,9 @@ def check_currencies(
 
     for position, row in rows_matching(checked, unsupported_currency):
         issues.append(
-            ValidationIssue(
+            make_issue(
                 row_number=position,
-                transaction_id=_clean_optional(row["transaction_id"]),
+                row=row,
                 field="currency",
                 issue_type="unsupported_currency",
                 severity="warning",
@@ -223,9 +220,9 @@ def check_duplicate_transaction_ids(checked: pd.DataFrame) -> list[ValidationIss
 
     for position, row in rows_matching(checked, duplicate_mask):
         issues.append(
-            ValidationIssue(
+            make_issue(
                 row_number=position,
-                transaction_id=_clean_optional(row["transaction_id"]),
+                row=row,
                 field="transaction_id",
                 issue_type="duplicate_transaction_id",
                 severity="error",
@@ -247,6 +244,28 @@ def rows_matching(dataframe: pd.DataFrame, mask: pd.Series):
 
     for position, row in zip(positions, records):
         yield position, row
+
+
+def make_issue(
+    row_number: int | None,
+    field: str,
+    issue_type: str,
+    severity: str,
+    message: str,
+    row: dict[str, Any] | None = None,
+    transaction_id: str | None = None,
+) -> ValidationIssue:
+    if row is not None:
+        transaction_id = _clean_optional(row["transaction_id"])
+
+    return ValidationIssue(
+        row_number=row_number,
+        transaction_id=transaction_id,
+        field=field,
+        issue_type=issue_type,
+        severity=severity,
+        message=message,
+    )
 
 
 def sort_issues(issues: list[ValidationIssue]) -> list[ValidationIssue]:
