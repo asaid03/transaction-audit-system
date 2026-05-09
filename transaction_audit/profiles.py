@@ -10,7 +10,8 @@ from transaction_audit.config import REQUIRED_COLUMNS
 
 
 PROFILE_SCHEMA_VERSION = 1
-DEFAULT_PROFILES_DIR = Path("import_profiles")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_PROFILES_DIR = PROJECT_ROOT / "import_profiles"
 
 
 @dataclass(frozen=True)

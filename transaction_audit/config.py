@@ -49,10 +49,6 @@ DEFAULT_COLUMN_ALIASES = {
     "payee": "counterparty",
 }
 
-
-COLUMN_ALIASES = DEFAULT_COLUMN_ALIASES
-
-
 @dataclass(frozen=True)
 class ValidationConfig:
     large_amount_threshold: float = 10000.0

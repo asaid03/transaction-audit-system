@@ -118,3 +118,9 @@ Or test the core validator with the sample file:
 ```powershell
 .\.venv\Scripts\python.exe -m transaction_audit.validation sample_data/sample_transactions.csv
 ```
+
+Run the regression tests:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -v
+```

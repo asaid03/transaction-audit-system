@@ -8,6 +8,7 @@ from transaction_audit.ingestion import load_transactions
 from transaction_audit.profiles import list_import_profiles, save_import_profile
 from transaction_audit.schema import apply_schema, source_mapping_from_canonical
 from transaction_audit.validation import validate_transactions
+from transaction_audit.workflow import build_mapping_plan
 
 
 st.set_page_config(page_title="Transaction Audit", layout="wide")
@@ -22,46 +23,30 @@ if uploaded_file is None:
 
 try:
     raw_transactions = load_transactions(uploaded_file, filename=uploaded_file.name)
-    auto_schema = apply_schema(raw_transactions)
     profiles = list_import_profiles()
+    auto_mapping_plan = build_mapping_plan(raw_transactions)
 
     column_options = [""] + [str(column) for column in raw_transactions.columns]
-    inferred_canonical_to_source = {
-        canonical: source for source, canonical in auto_schema.source_to_canonical.items()
-    }
 
-    with st.expander("Schema mapping", expanded=not auto_schema.has_required_schema):
+    with st.expander("Schema mapping", expanded=not auto_mapping_plan.auto_schema.has_required_schema):
         profile_options = {"Auto-detect": None}
         profile_options.update({profile.display_name: profile for profile in profiles})
         selected_profile_name = st.selectbox("Import profile", options=list(profile_options))
         selected_profile = profile_options[selected_profile_name]
+        mapping_plan = build_mapping_plan(raw_transactions, selected_profile)
 
-        if selected_profile is not None:
-            profile_canonical_to_source = {
-                canonical: source
-                for source, canonical in selected_profile.source_to_canonical.items()
-                if source in raw_transactions.columns
-            }
-            mapping_defaults = {**inferred_canonical_to_source, **profile_canonical_to_source}
-            missing_profile_sources = [
-                source
-                for source in selected_profile.source_to_canonical
-                if source not in raw_transactions.columns
-            ]
-            if missing_profile_sources:
-                st.warning(
-                    "Profile columns not found in this file: "
-                    + ", ".join(missing_profile_sources)
-                )
-        else:
-            mapping_defaults = inferred_canonical_to_source
+        if mapping_plan.missing_profile_sources:
+            st.warning(
+                "Profile columns not found in this file: "
+                + ", ".join(mapping_plan.missing_profile_sources)
+            )
 
         st.caption("Map your file columns to the transaction fields used by the validation engine.")
         canonical_to_source = {}
         mapping_columns = st.columns(2)
 
         for index, canonical_field in enumerate(REQUIRED_COLUMNS):
-            inferred_source = mapping_defaults.get(canonical_field, "")
+            inferred_source = mapping_plan.canonical_to_source.get(canonical_field, "")
             selected_source = mapping_columns[index % 2].selectbox(
                 canonical_field,
                 options=column_options,
