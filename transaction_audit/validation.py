@@ -239,10 +239,9 @@ def check_duplicate_transaction_ids(checked: pd.DataFrame) -> list[ValidationIss
 def rows_matching(dataframe: pd.DataFrame, mask: pd.Series):
     matched_mask = mask.fillna(False).astype(bool).to_numpy()
     positions = [
-        position
+        offset + 2
         for offset, is_match in enumerate(matched_mask)
         if is_match
-        for position in [offset + 2]
     ]
     records = dataframe.loc[matched_mask].to_dict("records")
 
