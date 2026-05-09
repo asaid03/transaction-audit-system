@@ -237,9 +237,17 @@ def check_duplicate_transaction_ids(checked: pd.DataFrame) -> list[ValidationIss
 
 
 def rows_matching(dataframe: pd.DataFrame, mask: pd.Series):
-    for position, (_, row) in enumerate(dataframe.iterrows(), start=2):
-        if bool(mask.iloc[position - 2]):
-            yield position, row
+    matched_mask = mask.fillna(False).astype(bool).to_numpy()
+    positions = [
+        position
+        for offset, is_match in enumerate(matched_mask)
+        if is_match
+        for position in [offset + 2]
+    ]
+    records = dataframe.loc[matched_mask].to_dict("records")
+
+    for position, row in zip(positions, records):
+        yield position, row
 
 
 def sort_issues(issues: list[ValidationIssue]) -> list[ValidationIssue]:
