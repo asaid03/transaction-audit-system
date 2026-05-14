@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,7 +11,8 @@ from transaction_audit.config import REQUIRED_COLUMNS
 
 
 PROFILE_SCHEMA_VERSION = 1
-DEFAULT_PROFILES_DIR = Path("import_profiles")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_PROFILES_DIR = PROJECT_ROOT / "import_profiles"
 
 
 @dataclass(frozen=True)
@@ -109,9 +111,8 @@ def validate_profile_mapping(source_to_canonical: dict[str, str]) -> None:
         joined = ", ".join(invalid_fields)
         raise ValueError(f"Profile contains unsupported canonical fields: {joined}")
 
-    duplicate_targets = sorted(
-        field for field in set(source_to_canonical.values()) if list(source_to_canonical.values()).count(field) > 1
-    )
+    target_counts = Counter(source_to_canonical.values())
+    duplicate_targets = sorted(field for field, count in target_counts.items() if count > 1)
     if duplicate_targets:
         joined = ", ".join(duplicate_targets)
         raise ValueError(f"Profile maps more than one source column to the same field: {joined}")

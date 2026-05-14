@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -43,24 +44,44 @@ def validate_transactions(
     config: ValidationConfig | None = None,
 ) -> ValidationResult:
     config = config or ValidationConfig()
-    issues: list[ValidationIssue] = []
+    missing_column_issues = check_required_columns(transactions)
 
+    if missing_column_issues:
+        return ValidationResult(transactions=transactions, issues=missing_column_issues)
+
+    prepared = prepare_transactions(transactions, config)
+    issues = []
+    issues.extend(check_missing_values(prepared.original, prepared.checked))
+    issues.extend(check_amounts(prepared.original, prepared.checked, config))
+    issues.extend(check_dates(prepared.original, prepared.checked))
+    issues.extend(check_currencies(prepared.original, prepared.checked, config))
+    issues.extend(check_duplicate_transaction_ids(prepared.checked))
+
+    return ValidationResult(transactions=prepared.checked, issues=sort_issues(issues))
+
+
+@dataclass(frozen=True)
+class PreparedTransactions:
+    original: pd.DataFrame
+    checked: pd.DataFrame
+
+
+def check_required_columns(transactions: pd.DataFrame) -> list[ValidationIssue]:
     missing_columns = [column for column in REQUIRED_COLUMNS if column not in transactions.columns]
-    for column in missing_columns:
-        issues.append(
-            ValidationIssue(
-                row_number=None,
-                transaction_id=None,
-                field=column,
-                issue_type="missing_column",
-                severity="error",
-                message=f"Required column '{column}' is missing.",
-            )
+    return [
+        make_issue(
+            row_number=None,
+            transaction_id=None,
+            field=column,
+            issue_type="missing_column",
+            severity="error",
+            message=f"Required column '{column}' is missing.",
         )
+        for column in missing_columns
+    ]
 
-    if missing_columns:
-        return ValidationResult(transactions=transactions, issues=issues)
 
+def prepare_transactions(transactions: pd.DataFrame, config: ValidationConfig) -> PreparedTransactions:
     original = transactions.copy()
     checked = transactions.copy()
     checked["transaction_id"] = checked["transaction_id"].astype("string").str.strip()
@@ -72,101 +93,136 @@ def validate_transactions(
         checked["transaction_date"],
         errors="coerce",
         dayfirst=config.date_dayfirst,
+        format="mixed",
     )
+    return PreparedTransactions(original=original, checked=checked)
 
-    for position, (index, row) in enumerate(checked.iterrows(), start=2):
-        row_number = position
-        transaction_id = _clean_optional(row["transaction_id"])
 
-        original_row = original.loc[index]
-
-        missing_fields: set[str] = set()
-
-        for column in REQUIRED_COLUMNS:
-            if pd.isna(original_row[column]) or str(original_row[column]).strip() == "":
-                missing_fields.add(column)
-                issues.append(
-                    ValidationIssue(
-                        row_number=row_number,
-                        transaction_id=transaction_id,
-                        field=column,
-                        issue_type="missing_value",
-                        severity="error",
-                        message=f"'{column}' is required.",
-                    )
-                )
-
-        if "amount" not in missing_fields and pd.isna(row["amount"]):
+def check_missing_values(original: pd.DataFrame, checked: pd.DataFrame) -> list[ValidationIssue]:
+    issues = []
+    for column in REQUIRED_COLUMNS:
+        missing_mask = _missing_mask(original[column])
+        for position, row in rows_matching(checked, missing_mask):
             issues.append(
-                ValidationIssue(
-                    row_number=row_number,
-                    transaction_id=transaction_id,
-                    field="amount",
-                    issue_type="invalid_amount",
+                make_issue(
+                    row_number=position,
+                    row=row,
+                    field=column,
+                    issue_type="missing_value",
                     severity="error",
-                    message="Amount must be numeric.",
+                    message=f"'{column}' is required.",
                 )
             )
-        elif row["amount"] == 0:
-            issues.append(
-                ValidationIssue(
-                    row_number=row_number,
-                    transaction_id=transaction_id,
-                    field="amount",
-                    issue_type="zero_amount",
-                    severity="warning",
-                    message="Amount is zero.",
-                )
-            )
-        elif abs(float(row["amount"])) >= config.large_amount_threshold:
-            issues.append(
-                ValidationIssue(
-                    row_number=row_number,
-                    transaction_id=transaction_id,
-                    field="amount",
-                    issue_type="large_amount",
-                    severity="warning",
-                    message=f"Amount is at or above {config.large_amount_threshold:,.2f}.",
-                )
-            )
+    return issues
 
-        if "transaction_date" not in missing_fields and pd.isna(row["transaction_date"]):
-            issues.append(
-                ValidationIssue(
-                    row_number=row_number,
-                    transaction_id=transaction_id,
-                    field="transaction_date",
-                    issue_type="invalid_date",
-                    severity="error",
-                    message="Transaction date could not be parsed.",
-                )
-            )
 
-        if "currency" not in missing_fields and row["currency"] not in config.allowed_currencies:
-            issues.append(
-                ValidationIssue(
-                    row_number=row_number,
-                    transaction_id=transaction_id,
-                    field="currency",
-                    issue_type="unsupported_currency",
-                    severity="warning",
-                    message=f"Currency '{row['currency']}' is outside the allowed list.",
-                )
-            )
+def check_amounts(
+    original: pd.DataFrame,
+    checked: pd.DataFrame,
+    config: ValidationConfig,
+) -> list[ValidationIssue]:
+    issues = []
+    amount_missing = _missing_mask(original["amount"])
+    invalid_amount = checked["amount"].isna() & ~amount_missing
+    zero_amount = checked["amount"].eq(0)
+    large_amount = checked["amount"].abs().ge(config.large_amount_threshold)
 
+    for position, row in rows_matching(checked, invalid_amount):
+        issues.append(
+            make_issue(
+                row_number=position,
+                row=row,
+                field="amount",
+                issue_type="invalid_amount",
+                severity="error",
+                message="Amount must be numeric.",
+            )
+        )
+
+    for position, row in rows_matching(checked, zero_amount):
+        issues.append(
+            make_issue(
+                row_number=position,
+                row=row,
+                field="amount",
+                issue_type="zero_amount",
+                severity="warning",
+                message="Amount is zero.",
+            )
+        )
+
+    for position, row in rows_matching(checked, large_amount):
+        issues.append(
+            make_issue(
+                row_number=position,
+                row=row,
+                field="amount",
+                issue_type="large_amount",
+                severity="warning",
+                message=f"Amount is at or above {config.large_amount_threshold:,.2f}.",
+            )
+        )
+
+    return issues
+
+
+def check_dates(original: pd.DataFrame, checked: pd.DataFrame) -> list[ValidationIssue]:
+    issues = []
+    date_missing = _missing_mask(original["transaction_date"])
+    invalid_date = checked["transaction_date"].isna() & ~date_missing
+
+    for position, row in rows_matching(checked, invalid_date):
+        issues.append(
+            make_issue(
+                row_number=position,
+                row=row,
+                field="transaction_date",
+                issue_type="invalid_date",
+                severity="error",
+                message="Transaction date could not be parsed.",
+            )
+        )
+
+    return issues
+
+
+def check_currencies(
+    original: pd.DataFrame,
+    checked: pd.DataFrame,
+    config: ValidationConfig,
+) -> list[ValidationIssue]:
+    issues = []
+    currency_missing = _missing_mask(original["currency"])
+    unsupported_currency = ~checked["currency"].isin(config.allowed_currencies) & ~currency_missing
+
+    for position, row in rows_matching(checked, unsupported_currency):
+        issues.append(
+            make_issue(
+                row_number=position,
+                row=row,
+                field="currency",
+                issue_type="unsupported_currency",
+                severity="warning",
+                message=f"Currency '{row['currency']}' is outside the allowed list.",
+            )
+        )
+
+    return issues
+
+
+def check_duplicate_transaction_ids(checked: pd.DataFrame) -> list[ValidationIssue]:
+    issues = []
     duplicate_mask = (
         checked["transaction_id"].notna()
         & checked["transaction_id"].ne("")
         & checked["transaction_id"].duplicated(keep=False)
     )
-    for position, (_, row) in enumerate(checked.iterrows(), start=2):
-        if not bool(duplicate_mask.iloc[position - 2]):
-            continue
 
+    for position, row in rows_matching(checked, duplicate_mask):
         issues.append(
-            ValidationIssue(
+            make_issue(
                 row_number=position,
-                transaction_id=_clean_optional(row["transaction_id"]),
+                row=row,
                 field="transaction_id",
                 issue_type="duplicate_transaction_id",
                 severity="error",
@@ -174,7 +230,57 @@ def validate_transactions(
             )
         )
 
-    return ValidationResult(transactions=checked, issues=issues)
+    return issues
+
+
+def rows_matching(dataframe: pd.DataFrame, mask: pd.Series):
+    matched_mask = mask.fillna(False).astype(bool).to_numpy()
+    positions = [
+        offset + 2
+        for offset, is_match in enumerate(matched_mask)
+        if is_match
+    ]
+    records = dataframe.loc[matched_mask].to_dict("records")
+
+    for position, row in zip(positions, records):
+        yield position, row
+
+
+def make_issue(
+    row_number: int | None,
+    field: str,
+    issue_type: str,
+    severity: str,
+    message: str,
+    row: dict[str, Any] | None = None,
+    transaction_id: str | None = None,
+) -> ValidationIssue:
+    if row is not None:
+        transaction_id = _clean_optional(row["transaction_id"])
+
+    return ValidationIssue(
+        row_number=row_number,
+        transaction_id=transaction_id,
+        field=field,
+        issue_type=issue_type,
+        severity=severity,
+        message=message,
+    )
+
+
+def sort_issues(issues: list[ValidationIssue]) -> list[ValidationIssue]:
+    return sorted(
+        issues,
+        key=lambda issue: (
+            -1 if issue.row_number is None else issue.row_number,
+            issue.field,
+            issue.issue_type,
+        ),
+    )
+
+
+def _missing_mask(series: pd.Series) -> pd.Series:
+    return series.isna() | series.astype(str).str.strip().eq("")
 
 
 def _clean_optional(value: object) -> str | None:
