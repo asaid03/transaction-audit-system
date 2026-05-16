@@ -50,6 +50,33 @@ def list_import_profiles(profiles_dir: Path = DEFAULT_PROFILES_DIR) -> list[Impo
     return profiles
 
 
+def profiles_dataframe(profiles: list[ImportProfile]) -> "pd.DataFrame":
+    import pandas as pd
+
+    rows = [
+        {
+            "profile_id": profile.profile_id,
+            "display_name": profile.display_name,
+            "description": profile.description,
+            "complete_required_fields": profile.complete_required_fields,
+            "created_at_utc": profile.created_at_utc,
+            "updated_at_utc": profile.updated_at_utc,
+        }
+        for profile in profiles
+    ]
+    return pd.DataFrame(
+        rows,
+        columns=[
+            "profile_id",
+            "display_name",
+            "description",
+            "complete_required_fields",
+            "created_at_utc",
+            "updated_at_utc",
+        ],
+    )
+
+
 def load_import_profile(
     profile_id: str,
     profiles_dir: Path = DEFAULT_PROFILES_DIR,
@@ -101,6 +128,18 @@ def save_import_profile(
         handle.write("\n")
 
     return profile
+
+
+def delete_import_profile(
+    profile_id: str,
+    profiles_dir: Path = DEFAULT_PROFILES_DIR,
+) -> bool:
+    path = profiles_dir / f"{profile_id_from_name(profile_id)}.json"
+    if not path.exists():
+        return False
+
+    path.unlink()
+    return True
 
 
 def validate_profile_mapping(source_to_canonical: dict[str, str]) -> None:

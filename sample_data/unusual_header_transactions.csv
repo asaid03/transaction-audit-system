@@ -1,0 +1,11 @@
+document_number,posting_day,ledger_holder,gross_value,money_code,external_party,memo
+DOC-9001,01/05/2026,LEDGER-10,850.00,GBP,Orion Office Services,Monthly stationery order
+DOC-9002,02/05/2026,LEDGER-10,12500.00,GBP,Bluebridge Advisory,Large consulting invoice
+DOC-9003,03/05/2026,LEDGER-20,not-a-number,USD,Metro Travel Group,Invalid amount example
+DOC-9004,not-a-date,LEDGER-20,230.75,USD,Metro Travel Group,Invalid date example
+DOC-9005,04/05/2026,LEDGER-30,0,EUR,Internal Reclass,Zero amount example
+DOC-9006,05/05/2026,LEDGER-40,940.25,AED,Global Vendor FZE,Unsupported currency example
+DOC-9007,06/05/2026,LEDGER-50,425.00,GBP,City Print Services,Exact duplicate id example
+DOC-9007,06/05/2026,LEDGER-50,425.00,GBP,City Print Services,Exact duplicate id example
+DOC-9008,07/05/2026,LEDGER-60,1200.00,GBP,Harbour IT Support,Possible duplicate payment pair
+DOC-9009,08/05/2026,LEDGER-60,1200.00,GBP,Harbour IT Support,Possible duplicate payment pair

@@ -1,11 +1,9 @@
-import io
-
 import streamlit as st
 
-from transaction_audit.audit import build_audit_summary, summary_dataframe
+from transaction_audit.audit import build_audit_summary, build_audit_workbook, issue_counts_dataframe, summary_dataframe
 from transaction_audit.config import REQUIRED_COLUMNS
 from transaction_audit.ingestion import load_transactions
-from transaction_audit.profiles import list_import_profiles, save_import_profile
+from transaction_audit.profiles import delete_import_profile, list_import_profiles, profiles_dataframe, save_import_profile
 from transaction_audit.schema import apply_schema, source_mapping_from_canonical
 from transaction_audit.validation import validate_transactions
 from transaction_audit.workflow import build_mapping_plan
@@ -15,15 +13,16 @@ def main() -> None:
     st.set_page_config(page_title="Transaction Audit", layout="wide")
     st.title("Transaction Audit")
 
+    profiles = list_import_profiles()
     uploaded_file = st.file_uploader("Upload transactions", type=["csv", "xlsx", "xls"])
 
     if uploaded_file is None:
         st.info("Upload a CSV or Excel file to run Phase 1 validation checks.")
+        render_profile_manager(profiles)
         st.stop()
 
     try:
         raw_transactions = load_transactions(uploaded_file, filename=uploaded_file.name)
-        profiles = list_import_profiles()
         auto_mapping_plan = build_mapping_plan(raw_transactions)
 
         column_options = [""] + [str(column) for column in raw_transactions.columns]
@@ -71,16 +70,20 @@ def main() -> None:
                     description=profile_description,
                 )
                 st.success(f"Saved profile: {profile.display_name}")
+                st.rerun()
     except Exception as exc:
         st.error(f"Could not process file: {exc}")
         st.stop()
 
     render_results(result, schema_result, summary)
+    render_profile_manager(profiles)
 
 
 def render_results(result, schema_result, summary: dict[str, object]) -> None:
     summary_frame = summary_dataframe(summary)
     issues_frame = result.issues_dataframe()
+    issue_counts_frame = issue_counts_dataframe(result)
+    audit_workbook = build_audit_workbook(result, schema_result, summary)
 
     metric_columns = st.columns(4)
     metric_columns[0].metric("Rows Checked", summary["rows_checked"])
@@ -93,7 +96,7 @@ def render_results(result, schema_result, summary: dict[str, object]) -> None:
     else:
         st.warning("Validation completed with errors that need review.")
 
-    tab_transactions, tab_issues, tab_audit = st.tabs(["Transactions", "Issues", "Audit Summary"])
+    tab_transactions, tab_issues, tab_audit = st.tabs(["Transactions", "Issues", "Audit Pack"])
 
     with tab_transactions:
         st.dataframe(result.transactions, use_container_width=True)
@@ -101,6 +104,9 @@ def render_results(result, schema_result, summary: dict[str, object]) -> None:
 
     with tab_issues:
         st.dataframe(issues_frame, use_container_width=True)
+        if not issue_counts_frame.empty:
+            st.write("Issue counts")
+            st.dataframe(issue_counts_frame, use_container_width=True)
         issue_csv = issues_frame.to_csv(index=False).encode("utf-8")
         st.download_button(
             "Download issues CSV",
@@ -113,14 +119,46 @@ def render_results(result, schema_result, summary: dict[str, object]) -> None:
         st.dataframe(summary_frame, use_container_width=True)
         st.write("Schema mapping")
         st.dataframe(schema_result.mapping_dataframe(), use_container_width=True)
-        output = io.StringIO()
-        summary_frame.to_csv(output, index=False)
         st.download_button(
-            "Download audit summary CSV",
-            data=output.getvalue().encode("utf-8"),
-            file_name="audit_summary.csv",
-            mime="text/csv",
+            "Download audit workbook",
+            data=audit_workbook,
+            file_name="audit_review_pack.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+
+
+def render_profile_manager(profiles) -> None:
+    with st.expander("Import profiles"):
+        if not profiles:
+            st.info("No saved import profiles yet.")
+            return
+
+        st.dataframe(profiles_dataframe(profiles), use_container_width=True)
+        profile_options = {profile.display_name: profile for profile in profiles}
+        selected_name = st.selectbox("View profile", options=list(profile_options), key="profile_manager_select")
+        selected_profile = profile_options[selected_name]
+
+        st.write("Profile mapping")
+        st.dataframe(
+            profile_mapping_dataframe(selected_profile.source_to_canonical),
+            use_container_width=True,
+        )
+
+        if st.button("Delete selected profile"):
+            if delete_import_profile(selected_profile.profile_id):
+                st.success(f"Deleted profile: {selected_profile.display_name}")
+                st.rerun()
+            st.warning("Profile was already missing.")
+
+
+def profile_mapping_dataframe(source_to_canonical: dict[str, str]):
+    import pandas as pd
+
+    rows = [
+        {"source_column": source, "canonical_field": canonical}
+        for source, canonical in source_to_canonical.items()
+    ]
+    return pd.DataFrame(rows, columns=["source_column", "canonical_field"])
 
 
 if __name__ == "__main__":
