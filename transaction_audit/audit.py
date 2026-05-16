@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pandas as pd
 
-from transaction_audit.validation import ValidationResult
+from transaction_audit.types import ValidationResult
 
 
 def build_audit_summary(result: ValidationResult, source_name: str) -> dict[str, object]:

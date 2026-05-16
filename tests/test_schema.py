@@ -46,6 +46,12 @@ class SchemaTests(unittest.TestCase):
                 },
             )
 
+    def test_rejects_mapping_that_creates_duplicate_canonical_columns(self):
+        dataframe = pd.DataFrame(columns=["transaction_id", "date", "acc_id", "amount", "amt", "ccy", "vendor"])
+
+        with self.assertRaisesRegex(ValueError, "duplicate canonical columns: amount"):
+            apply_schema(dataframe, source_to_canonical={"amt": "amount"})
+
     def test_mapping_plan_reports_missing_profile_sources(self):
         dataframe = pd.DataFrame(columns=["txn_ref", "date", "acc_id", "amt", "ccy"])
 

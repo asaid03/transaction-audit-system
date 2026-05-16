@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 
 import pandas as pd
@@ -96,6 +97,10 @@ def apply_schema(
         if source in normalized.columns and canonical in REQUIRED_COLUMNS
     }
     normalized = normalized.rename(columns=rename_map)
+    duplicate_required = duplicate_required_columns(normalized.columns)
+    if duplicate_required:
+        joined = ", ".join(duplicate_required)
+        raise ValueError(f"Schema mapping creates duplicate canonical columns: {joined}")
 
     mapped_sources = set(rename_map)
     mapped_canonical = set(rename_map.values())
@@ -110,3 +115,9 @@ def apply_schema(
         missing_required=missing_required,
         unmapped_columns=unmapped_columns,
     )
+
+
+def duplicate_required_columns(columns: pd.Index) -> list[str]:
+    required_names = [str(column) for column in columns if str(column) in REQUIRED_COLUMNS]
+    counts = Counter(required_names)
+    return sorted(column for column, count in counts.items() if count > 1)
