@@ -54,3 +54,4 @@ class ValidationConfig:
     large_amount_threshold: float = 10000.0
     allowed_currencies: tuple[str, ...] = ("GBP", "USD", "EUR")
     date_dayfirst: bool = True
+    duplicate_payment_window_days: int = 2

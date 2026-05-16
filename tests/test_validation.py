@@ -62,3 +62,75 @@ class ValidationTests(unittest.TestCase):
         row_numbers = result.issues_dataframe()["row_number"].tolist()
 
         self.assertEqual([2, 3], row_numbers)
+
+    def test_flags_possible_duplicate_payments_with_different_ids(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "transaction_date": ["2024-03-15", "2024-03-16"],
+                "account_id": ["ACC-1", "ACC-1"],
+                "amount": ["250.00", "250.00"],
+                "currency": ["GBP", "GBP"],
+                "counterparty": ["Vendor A", "Vendor A"],
+            }
+        )
+
+        result = validate_transactions(dataframe)
+        issues = result.issues_dataframe()
+
+        self.assertEqual(
+            ["possible_duplicate_payment", "possible_duplicate_payment"],
+            issues["issue_type"].tolist(),
+        )
+        self.assertEqual(["warning", "warning"], issues["severity"].tolist())
+
+    def test_possible_duplicate_payments_require_different_transaction_ids(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001", "TXN-001"],
+                "transaction_date": ["2024-03-15", "2024-03-16"],
+                "account_id": ["ACC-1", "ACC-1"],
+                "amount": ["250.00", "250.00"],
+                "currency": ["GBP", "GBP"],
+                "counterparty": ["Vendor A", "Vendor A"],
+            }
+        )
+
+        result = validate_transactions(dataframe)
+        issue_types = result.issues_dataframe()["issue_type"].tolist()
+
+        self.assertNotIn("possible_duplicate_payment", issue_types)
+
+    def test_possible_duplicate_payments_respect_date_window(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "transaction_date": ["2024-03-15", "2024-03-20"],
+                "account_id": ["ACC-1", "ACC-1"],
+                "amount": ["250.00", "250.00"],
+                "currency": ["GBP", "GBP"],
+                "counterparty": ["Vendor A", "Vendor A"],
+            }
+        )
+
+        result = validate_transactions(dataframe)
+        issue_types = result.issues_dataframe()["issue_type"].tolist()
+
+        self.assertNotIn("possible_duplicate_payment", issue_types)
+
+    def test_possible_duplicate_payments_ignore_incomplete_key_fields(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "transaction_date": ["2024-03-15", "2024-03-16"],
+                "account_id": ["ACC-1", "ACC-1"],
+                "amount": ["250.00", "250.00"],
+                "currency": ["GBP", "GBP"],
+                "counterparty": ["", ""],
+            }
+        )
+
+        result = validate_transactions(dataframe)
+        issue_types = result.issues_dataframe()["issue_type"].tolist()
+
+        self.assertNotIn("possible_duplicate_payment", issue_types)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Hashable
 
 import pandas as pd
 
@@ -56,6 +56,7 @@ def validate_transactions(
     issues.extend(check_dates(prepared.original, prepared.checked))
     issues.extend(check_currencies(prepared.original, prepared.checked, config))
     issues.extend(check_duplicate_transaction_ids(prepared.checked))
+    issues.extend(check_possible_duplicate_payments(prepared.checked, config))
 
     return ValidationResult(transactions=prepared.checked, issues=sort_issues(issues))
 
@@ -231,6 +232,60 @@ def check_duplicate_transaction_ids(checked: pd.DataFrame) -> list[ValidationIss
         )
 
     return issues
+
+
+def check_possible_duplicate_payments(
+    checked: pd.DataFrame,
+    config: ValidationConfig,
+) -> list[ValidationIssue]:
+    group_columns = ["account_id", "counterparty", "amount", "currency"]
+    required_text_columns = ["account_id", "counterparty", "currency", "transaction_id"]
+    usable = checked[
+        checked[group_columns].notna().all(axis=1)
+        & checked[required_text_columns].ne("").all(axis=1)
+        & checked["transaction_date"].notna()
+    ].copy()
+
+    if usable.empty:
+        return []
+
+    flagged_indexes: set[Hashable] = set()
+    for _, group in usable.groupby(group_columns, dropna=False):
+        if group["transaction_id"].nunique() < 2:
+            continue
+
+        ordered = group.sort_values("transaction_date")
+        ordered_indexes = list(ordered.index)
+        ordered_dates = ordered["transaction_date"].tolist()
+        ordered_ids = ordered["transaction_id"].tolist()
+
+        for offset in range(1, len(ordered)):
+            days_between = (ordered_dates[offset] - ordered_dates[offset - 1]).days
+            if (
+                ordered_ids[offset] != ordered_ids[offset - 1]
+                and days_between <= config.duplicate_payment_window_days
+            ):
+                flagged_indexes.add(ordered_indexes[offset - 1])
+                flagged_indexes.add(ordered_indexes[offset])
+
+    if not flagged_indexes:
+        return []
+
+    duplicate_payment_mask = checked.index.isin(flagged_indexes)
+    return [
+        make_issue(
+            row_number=position,
+            row=row,
+            field="transaction_id",
+            issue_type="possible_duplicate_payment",
+            severity="warning",
+            message=(
+                "Possible duplicate payment: same account, counterparty, amount, "
+                f"and currency within {config.duplicate_payment_window_days} days."
+            ),
+        )
+        for position, row in rows_matching(checked, pd.Series(duplicate_payment_mask, index=checked.index))
+    ]
 
 
 def rows_matching(dataframe: pd.DataFrame, mask: pd.Series):
