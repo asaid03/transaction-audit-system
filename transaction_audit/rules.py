@@ -233,6 +233,9 @@ def make_issue(
     message: str,
     row: dict[str, Any] | None = None,
     transaction_id: str | None = None,
+    dataset: str = "transactions",
+    related_dataset: str | None = None,
+    related_record_id: str | None = None,
 ) -> ValidationIssue:
     if row is not None:
         transaction_id = _clean_optional(row["transaction_id"])
@@ -244,6 +247,9 @@ def make_issue(
         issue_type=issue_type,
         severity=severity,
         message=message,
+        dataset=dataset,
+        related_dataset=related_dataset,
+        related_record_id=related_record_id,
     )
 
 
