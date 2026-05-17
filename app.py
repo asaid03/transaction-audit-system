@@ -2,8 +2,10 @@ import streamlit as st
 
 from transaction_audit.audit import build_audit_summary, build_audit_workbook, issue_counts_dataframe, summary_dataframe
 from transaction_audit.config import REQUIRED_COLUMNS
+from transaction_audit.datasets import AuditBundle, AuditDataset, DatasetType
 from transaction_audit.ingestion import load_transactions
 from transaction_audit.profiles import delete_import_profile, list_import_profiles, profiles_dataframe, save_import_profile
+from transaction_audit.reconciliation import reconcile_bundle
 from transaction_audit.schema import apply_schema, source_mapping_from_canonical
 from transaction_audit.validation import validate_transactions
 from transaction_audit.workflow import build_mapping_plan
@@ -14,6 +16,17 @@ def main() -> None:
     st.title("Transaction Audit")
 
     profiles = list_import_profiles()
+    workflow = st.radio(
+        "Workflow",
+        options=["Single-file validation", "Multi-file reconciliation"],
+        horizontal=True,
+    )
+
+    if workflow == "Multi-file reconciliation":
+        render_multi_file_reconciliation()
+        render_profile_manager(profiles)
+        return
+
     uploaded_file = st.file_uploader("Upload transactions", type=["csv", "xlsx", "xls"])
 
     if uploaded_file is None:
@@ -125,6 +138,91 @@ def render_results(result, schema_result, summary: dict[str, object]) -> None:
             file_name="audit_review_pack.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+
+
+def render_multi_file_reconciliation() -> None:
+    st.caption("Upload a transaction file and optional reference files. Budget checks are not exposed yet.")
+
+    transaction_file = st.file_uploader(
+        "Transactions",
+        type=["csv", "xlsx", "xls"],
+        key="phase2_transactions",
+    )
+    vendor_file = st.file_uploader(
+        "Vendors / suppliers",
+        type=["csv", "xlsx", "xls"],
+        key="phase2_vendors",
+    )
+    beneficiary_file = st.file_uploader(
+        "Beneficiaries",
+        type=["csv", "xlsx", "xls"],
+        key="phase2_beneficiaries",
+    )
+
+    if transaction_file is None:
+        st.info("Upload a transaction file to start multi-file reconciliation.")
+        return
+
+    if vendor_file is None and beneficiary_file is None:
+        st.warning("Upload at least one reference file, such as vendors or beneficiaries.")
+        return
+
+    try:
+        bundle = AuditBundle(
+            transactions=uploaded_dataset(DatasetType.TRANSACTIONS, transaction_file),
+            vendors=uploaded_dataset(DatasetType.VENDORS, vendor_file) if vendor_file else None,
+            beneficiaries=uploaded_dataset(DatasetType.BENEFICIARIES, beneficiary_file) if beneficiary_file else None,
+        )
+        result = reconcile_bundle(bundle)
+    except Exception as exc:
+        st.error(f"Could not process audit bundle: {exc}")
+        return
+
+    issues = result.issues_dataframe()
+    skipped = result.skipped_checks_dataframe()
+
+    metric_columns = st.columns(4)
+    metric_columns[0].metric("Transactions", bundle.transactions.row_count)
+    metric_columns[1].metric("Reference Issues", len(issues))
+    metric_columns[2].metric("Reference Files", len(bundle.reference_datasets()))
+    metric_columns[3].metric("Skipped Checks", len(skipped))
+
+    tab_summary, tab_issues, tab_skipped, tab_data = st.tabs(
+        ["Dataset Summary", "Reference Issues", "Skipped Checks", "Input Data"]
+    )
+
+    with tab_summary:
+        st.dataframe(bundle.dataset_summary(), use_container_width=True)
+
+    with tab_issues:
+        st.dataframe(issues, use_container_width=True)
+        st.download_button(
+            "Download reference issues CSV",
+            data=issues.to_csv(index=False).encode("utf-8"),
+            file_name="reference_issues.csv",
+            mime="text/csv",
+        )
+
+    with tab_skipped:
+        st.dataframe(skipped, use_container_width=True)
+
+    with tab_data:
+        st.write("Transactions")
+        st.dataframe(bundle.transactions.dataframe, use_container_width=True)
+        if bundle.vendors:
+            st.write("Vendors / suppliers")
+            st.dataframe(bundle.vendors.dataframe, use_container_width=True)
+        if bundle.beneficiaries:
+            st.write("Beneficiaries")
+            st.dataframe(bundle.beneficiaries.dataframe, use_container_width=True)
+
+
+def uploaded_dataset(dataset_type: DatasetType, uploaded_file) -> AuditDataset:
+    return AuditDataset(
+        dataset_type=dataset_type,
+        dataframe=load_transactions(uploaded_file, filename=uploaded_file.name),
+        source_name=uploaded_file.name,
+    )
 
 
 def render_profile_manager(profiles) -> None:
