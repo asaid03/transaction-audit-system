@@ -40,8 +40,10 @@ def default_canonical_name(column: object) -> str:
 def infer_source_to_canonical(
     columns: list[object],
     aliases: dict[str, str] | None = None,
+    allowed_columns: tuple[str, ...] | list[str] | None = None,
 ) -> dict[str, str]:
     aliases = aliases or DEFAULT_COLUMN_ALIASES
+    allowed = set(allowed_columns or REQUIRED_COLUMNS)
     mapping: dict[str, str] = {}
     used_canonical_fields: set[str] = set()
 
@@ -50,7 +52,7 @@ def infer_source_to_canonical(
         normalized = normalize_column_key(column)
         canonical = aliases.get(normalized, normalized.replace(" ", "_"))
 
-        if canonical in REQUIRED_COLUMNS and canonical not in used_canonical_fields:
+        if canonical in allowed and canonical not in used_canonical_fields:
             mapping[source_column] = canonical
             used_canonical_fields.add(canonical)
 
@@ -83,9 +85,14 @@ def source_mapping_from_canonical(
 def apply_schema(
     dataframe: pd.DataFrame,
     source_to_canonical: dict[str, str] | None = None,
+    aliases: dict[str, str] | None = None,
+    required_columns: tuple[str, ...] | list[str] | None = None,
+    allowed_columns: tuple[str, ...] | list[str] | None = None,
 ) -> SchemaResult:
+    required = tuple(required_columns or REQUIRED_COLUMNS)
+    allowed = tuple(allowed_columns or required)
     mapping = (
-        infer_source_to_canonical(list(dataframe.columns))
+        infer_source_to_canonical(list(dataframe.columns), aliases=aliases, allowed_columns=allowed)
         if source_to_canonical is None
         else source_to_canonical
     )
@@ -94,10 +101,10 @@ def apply_schema(
     rename_map = {
         source: canonical
         for source, canonical in mapping.items()
-        if source in normalized.columns and canonical in REQUIRED_COLUMNS
+        if source in normalized.columns and canonical in allowed
     }
     normalized = normalized.rename(columns=rename_map)
-    duplicate_required = duplicate_required_columns(normalized.columns)
+    duplicate_required = duplicate_required_columns(normalized.columns, allowed_columns=allowed)
     if duplicate_required:
         joined = ", ".join(duplicate_required)
         raise ValueError(f"Schema mapping creates duplicate canonical columns: {joined}")
@@ -105,7 +112,7 @@ def apply_schema(
     mapped_sources = set(rename_map)
     mapped_canonical = set(rename_map.values())
     missing_required = [
-        column for column in REQUIRED_COLUMNS if column not in mapped_canonical and column not in normalized.columns
+        column for column in required if column not in mapped_canonical and column not in normalized.columns
     ]
     unmapped_columns = [str(column) for column in dataframe.columns if str(column) not in mapped_sources]
 
@@ -117,7 +124,11 @@ def apply_schema(
     )
 
 
-def duplicate_required_columns(columns: pd.Index) -> list[str]:
-    required_names = [str(column) for column in columns if str(column) in REQUIRED_COLUMNS]
-    counts = Counter(required_names)
+def duplicate_required_columns(
+    columns: pd.Index,
+    allowed_columns: tuple[str, ...] | list[str] | None = None,
+) -> list[str]:
+    allowed = set(allowed_columns or REQUIRED_COLUMNS)
+    canonical_names = [str(column) for column in columns if str(column) in allowed]
+    counts = Counter(canonical_names)
     return sorted(column for column, count in counts.items() if count > 1)

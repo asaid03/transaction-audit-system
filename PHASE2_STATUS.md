@@ -62,9 +62,12 @@ Multi-file mode currently supports:
 - transactions upload
 - vendors/suppliers upload
 - beneficiaries upload
+- auto-detect-first schema mapping per uploaded dataset
+- dataset-scoped import profiles
 
 It shows:
 
+- mapping summary
 - dataset summary
 - transaction validation issues
 - reference issues
@@ -75,6 +78,19 @@ It shows:
 - reference issues CSV download
 
 Budget upload is intentionally not shown yet because budget reconciliation is not implemented.
+
+Multi-file mapping behavior:
+
+- Each uploaded file is auto-detected first.
+- Mapping expanders stay collapsed when required fields are found.
+- If required fields are missing, the affected dataset mapping expander opens.
+- Profiles are scoped by dataset type:
+  - transactions
+  - vendors
+  - beneficiaries
+  - budget later
+- Existing older profiles without `dataset_type` load as transaction profiles.
+- `AuditBundle` receives canonical dataframes only.
 
 ## Sample Files
 
@@ -127,7 +143,7 @@ http://localhost:8501
 Latest verified test run:
 
 ```text
-Ran 42 tests
+Ran 47 tests
 OK
 ```
 

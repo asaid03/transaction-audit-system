@@ -4,12 +4,12 @@ import streamlit as st
 from transaction_audit.audit import build_audit_summary, build_audit_workbook, issue_counts_dataframe, summary_dataframe
 from transaction_audit.bundle_workflow import run_bundle_audit
 from transaction_audit.config import REQUIRED_COLUMNS
-from transaction_audit.datasets import AuditBundle, AuditDataset, DatasetType
+from transaction_audit.datasets import AuditBundle, AuditDataset, DATASET_DEFINITIONS, DatasetType
 from transaction_audit.ingestion import load_dataset, load_transactions
 from transaction_audit.profiles import delete_import_profile, list_import_profiles, profiles_dataframe, save_import_profile
 from transaction_audit.schema import apply_schema, source_mapping_from_canonical
 from transaction_audit.validation import validate_transactions
-from transaction_audit.workflow import build_mapping_plan
+from transaction_audit.workflow import allowed_mapping_columns, apply_mapping_plan, build_mapping_plan, required_mapping_columns
 
 
 def main() -> None:
@@ -24,7 +24,7 @@ def main() -> None:
     )
 
     if workflow == "Multi-file reconciliation":
-        render_multi_file_reconciliation()
+        render_multi_file_reconciliation(profiles)
         render_profile_manager(profiles)
         return
 
@@ -42,8 +42,9 @@ def main() -> None:
         column_options = [""] + [str(column) for column in raw_transactions.columns]
 
         with st.expander("Schema mapping", expanded=not auto_mapping_plan.auto_schema.has_required_schema):
+            transaction_profiles = profiles_for_dataset(profiles, DatasetType.TRANSACTIONS)
             profile_options = {"Auto-detect": None}
-            profile_options.update({profile.display_name: profile for profile in profiles})
+            profile_options.update({profile.display_name: profile for profile in transaction_profiles})
             selected_profile_name = st.selectbox("Import profile", options=list(profile_options))
             selected_profile = profile_options[selected_profile_name]
             mapping_plan = build_mapping_plan(raw_transactions, selected_profile)
@@ -141,7 +142,7 @@ def render_results(result, schema_result, summary: dict[str, object]) -> None:
         )
 
 
-def render_multi_file_reconciliation() -> None:
+def render_multi_file_reconciliation(profiles) -> None:
     st.caption("Upload a transaction file and optional reference files. Budget checks are not exposed yet.")
 
     transaction_file = st.file_uploader(
@@ -169,10 +170,52 @@ def render_multi_file_reconciliation() -> None:
         return
 
     try:
+        uploaded_files = {
+            DatasetType.TRANSACTIONS: transaction_file,
+            DatasetType.VENDORS: vendor_file,
+            DatasetType.BENEFICIARIES: beneficiary_file,
+        }
+        prepared_datasets: dict[DatasetType, AuditDataset] = {}
+        schema_results = {}
+        mapping_rows = []
+
+        for dataset_type, uploaded_file in uploaded_files.items():
+            if uploaded_file is None:
+                continue
+
+            raw_dataframe = load_dataset(uploaded_file, filename=uploaded_file.name)
+            schema_result, selected_profile = render_dataset_mapping(
+                dataset_type=dataset_type,
+                raw_dataframe=raw_dataframe,
+                source_name=uploaded_file.name,
+                profiles=profiles,
+            )
+            schema_results[dataset_type] = schema_result
+            mapping_rows.append(mapping_status_row(dataset_type, uploaded_file.name, schema_result, selected_profile))
+
+            if schema_result.has_required_schema:
+                prepared_datasets[dataset_type] = AuditDataset(
+                    dataset_type=dataset_type,
+                    dataframe=schema_result.transactions,
+                    source_name=uploaded_file.name,
+                )
+
+        st.write("Mapping summary")
+        st.dataframe(pd.DataFrame(mapping_rows), use_container_width=True)
+
+        blocked = [
+            DATASET_DEFINITIONS[dataset_type].display_name
+            for dataset_type, schema_result in schema_results.items()
+            if not schema_result.has_required_schema
+        ]
+        if blocked:
+            st.error("Fix required schema mappings before reconciliation can run: " + ", ".join(blocked))
+            return
+
         bundle = AuditBundle(
-            transactions=uploaded_dataset(DatasetType.TRANSACTIONS, transaction_file),
-            vendors=uploaded_dataset(DatasetType.VENDORS, vendor_file) if vendor_file else None,
-            beneficiaries=uploaded_dataset(DatasetType.BENEFICIARIES, beneficiary_file) if beneficiary_file else None,
+            transactions=prepared_datasets[DatasetType.TRANSACTIONS],
+            vendors=prepared_datasets.get(DatasetType.VENDORS),
+            beneficiaries=prepared_datasets.get(DatasetType.BENEFICIARIES),
         )
         audit_result = run_bundle_audit(bundle)
     except Exception as exc:
@@ -237,12 +280,114 @@ def render_multi_file_reconciliation() -> None:
             st.dataframe(bundle.beneficiaries.dataframe, use_container_width=True)
 
 
-def uploaded_dataset(dataset_type: DatasetType, uploaded_file) -> AuditDataset:
-    return AuditDataset(
-        dataset_type=dataset_type,
-        dataframe=load_dataset(uploaded_file, filename=uploaded_file.name),
-        source_name=uploaded_file.name,
-    )
+def render_dataset_mapping(
+    dataset_type: DatasetType,
+    raw_dataframe: pd.DataFrame,
+    source_name: str,
+    profiles,
+):
+    definition = DATASET_DEFINITIONS[dataset_type]
+    available_profiles = profiles_for_dataset(profiles, dataset_type)
+    default_profile = best_matching_profile(raw_dataframe, dataset_type, available_profiles)
+    auto_plan = build_mapping_plan(raw_dataframe, dataset_type=dataset_type)
+    expanded = default_profile is None and not auto_plan.auto_schema.has_required_schema
+
+    with st.expander(f"{definition.display_name} schema mapping", expanded=expanded):
+        profile_options = {"Auto-detect": None}
+        profile_options.update({profile.display_name: profile for profile in available_profiles})
+        option_names = list(profile_options)
+        default_name = default_profile.display_name if default_profile else "Auto-detect"
+        selected_name = st.selectbox(
+            "Import profile",
+            options=option_names,
+            index=option_names.index(default_name),
+            key=f"{dataset_type.value}_{source_name}_profile",
+        )
+        selected_profile = profile_options[selected_name]
+        mapping_plan = build_mapping_plan(raw_dataframe, selected_profile, dataset_type=dataset_type)
+
+        if mapping_plan.missing_profile_sources:
+            st.warning(
+                "Profile columns not found in this file: "
+                + ", ".join(mapping_plan.missing_profile_sources)
+            )
+
+        column_options = [""] + [str(column) for column in raw_dataframe.columns]
+        required_fields = set(required_mapping_columns(dataset_type))
+        canonical_to_source = {}
+        mapping_columns = st.columns(2)
+
+        for index, canonical_field in enumerate(allowed_mapping_columns(dataset_type)):
+            inferred_source = mapping_plan.canonical_to_source.get(canonical_field, "")
+            label = f"{canonical_field} *" if canonical_field in required_fields else canonical_field
+            selected_source = mapping_columns[index % 2].selectbox(
+                label,
+                options=column_options,
+                index=column_options.index(inferred_source) if inferred_source in column_options else 0,
+                key=f"{dataset_type.value}_{source_name}_{canonical_field}",
+            )
+            canonical_to_source[canonical_field] = selected_source or None
+
+    schema_result = apply_mapping_plan(raw_dataframe, canonical_to_source, dataset_type=dataset_type)
+
+    if not schema_result.has_required_schema:
+        st.warning(
+            f"{definition.display_name} needs required fields mapped: "
+            + ", ".join(schema_result.missing_required)
+        )
+    elif selected_profile is None:
+        with st.expander(f"Save {definition.display_name.lower()} import profile"):
+            profile_name = st.text_input(
+                "Profile name",
+                placeholder=f"Example: {definition.display_name} export",
+                key=f"{dataset_type.value}_{source_name}_profile_name",
+            )
+            profile_description = st.text_input(
+                "Description",
+                placeholder="Optional source/system note",
+                key=f"{dataset_type.value}_{source_name}_profile_description",
+            )
+            if st.button("Save profile", key=f"{dataset_type.value}_{source_name}_save_profile"):
+                profile = save_import_profile(
+                    profile_name,
+                    schema_result.source_to_canonical,
+                    description=profile_description,
+                    dataset_type=dataset_type,
+                )
+                st.success(f"Saved profile: {profile.display_name}")
+                st.rerun()
+
+    return schema_result, selected_profile
+
+
+def best_matching_profile(raw_dataframe, dataset_type: DatasetType, profiles):
+    if build_mapping_plan(raw_dataframe, dataset_type=dataset_type).auto_schema.has_required_schema:
+        return None
+
+    for profile in profiles:
+        try:
+            plan = build_mapping_plan(raw_dataframe, profile, dataset_type=dataset_type)
+            result = apply_mapping_plan(raw_dataframe, plan.canonical_to_source, dataset_type=dataset_type)
+        except ValueError:
+            continue
+        if result.has_required_schema:
+            return profile
+    return None
+
+
+def mapping_status_row(dataset_type: DatasetType, source_name: str, schema_result, selected_profile) -> dict[str, object]:
+    return {
+        "dataset": dataset_type.value,
+        "source_name": source_name,
+        "status": "ready" if schema_result.has_required_schema else "needs mapping",
+        "missing_required": ", ".join(schema_result.missing_required),
+        "mapped_columns": len(schema_result.source_to_canonical),
+        "profile": selected_profile.display_name if selected_profile else "Auto-detect",
+    }
+
+
+def profiles_for_dataset(profiles, dataset_type: DatasetType):
+    return [profile for profile in profiles if profile.dataset_type == dataset_type.value]
 
 
 def render_profile_manager(profiles) -> None:
@@ -252,7 +397,10 @@ def render_profile_manager(profiles) -> None:
             return
 
         st.dataframe(profiles_dataframe(profiles), use_container_width=True)
-        profile_options = {profile.display_name: profile for profile in profiles}
+        profile_options = {
+            f"{profile.display_name} ({profile.dataset_type})": profile
+            for profile in profiles
+        }
         selected_name = st.selectbox("View profile", options=list(profile_options), key="profile_manager_select")
         selected_profile = profile_options[selected_name]
 
