@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass
 import pandas as pd
 
 from transaction_audit.datasets import AuditBundle, AuditDataset
-from transaction_audit.joins import AUDIT_ROW_NUMBER, safe_left_join, unmatched_left_rows
+from transaction_audit.joins import AUDIT_ROW_NUMBER, normalize_join_key, safe_left_join, unmatched_left_rows, with_audit_row_numbers
 from transaction_audit.types import ISSUE_COLUMNS, ValidationIssue
 
 
@@ -110,9 +110,16 @@ def check_transaction_vendor_references(
         )
 
     transaction_field, vendor_field = match
+    duplicate_issues = duplicate_reference_key_issues(
+        vendors,
+        key_field=vendor_field,
+        issue_type="duplicate_vendor_reference",
+        message_template="Vendor reference '{value}' appears more than once in the vendor file.",
+    )
+    vendors_for_join = deduplicate_reference_rows(vendors.dataframe, vendor_field)
     joined = safe_left_join(
         transactions.dataframe,
-        vendors.dataframe,
+        vendors_for_join,
         left_on=transaction_field,
         right_on=vendor_field,
         right_prefix="vendor",
@@ -129,7 +136,7 @@ def check_transaction_vendor_references(
         for row in unmatched_left_rows(joined).to_dict("records")
         if _has_value(row[transaction_field])
     ]
-    return ReconciliationResult(issues=issues, skipped_checks=[])
+    return ReconciliationResult(issues=duplicate_issues + issues, skipped_checks=[])
 
 
 def check_transaction_beneficiary_references(
@@ -148,9 +155,16 @@ def check_transaction_beneficiary_references(
             ],
         )
 
+    duplicate_issues = duplicate_reference_key_issues(
+        beneficiaries,
+        key_field="beneficiary_id",
+        issue_type="duplicate_beneficiary_reference",
+        message_template="Beneficiary reference '{value}' appears more than once in the beneficiary file.",
+    )
+    beneficiaries_for_join = deduplicate_reference_rows(beneficiaries.dataframe, "beneficiary_id")
     joined = safe_left_join(
         transactions.dataframe,
-        beneficiaries.dataframe,
+        beneficiaries_for_join,
         left_on="beneficiary_id",
         right_on="beneficiary_id",
         right_prefix="beneficiary",
@@ -167,7 +181,40 @@ def check_transaction_beneficiary_references(
         for row in unmatched_left_rows(joined).to_dict("records")
         if _has_value(row["beneficiary_id"])
     ]
-    return ReconciliationResult(issues=issues, skipped_checks=[])
+    return ReconciliationResult(issues=duplicate_issues + issues, skipped_checks=[])
+
+
+def duplicate_reference_key_issues(
+    dataset: AuditDataset,
+    key_field: str,
+    issue_type: str,
+    message_template: str,
+) -> list[ValidationIssue]:
+    keyed = with_audit_row_numbers(dataset.dataframe)
+    normalized_key = normalize_join_key(keyed[key_field])
+    duplicate_mask = normalized_key.notna() & normalized_key.duplicated(keep=False)
+
+    return [
+        ValidationIssue(
+            dataset=dataset.dataset_type.value,
+            row_number=int(row[AUDIT_ROW_NUMBER]),
+            transaction_id=None,
+            field=key_field,
+            issue_type=issue_type,
+            severity="error",
+            related_dataset=None,
+            related_record_id=_clean_optional(row[key_field]),
+            message=message_template.format(value=row[key_field]),
+        )
+        for row in keyed.loc[duplicate_mask].to_dict("records")
+    ]
+
+
+def deduplicate_reference_rows(dataframe: pd.DataFrame, key_field: str) -> pd.DataFrame:
+    normalized_key = normalize_join_key(dataframe[key_field])
+    usable_mask = normalized_key.notna()
+    keep_mask = usable_mask & ~normalized_key.duplicated(keep="first")
+    return dataframe.loc[keep_mask].copy()
 
 
 def _reference_issue(

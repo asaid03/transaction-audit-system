@@ -2,11 +2,11 @@ import pandas as pd
 import streamlit as st
 
 from transaction_audit.audit import build_audit_summary, build_audit_workbook, issue_counts_dataframe, summary_dataframe
+from transaction_audit.bundle_workflow import run_bundle_audit
 from transaction_audit.config import REQUIRED_COLUMNS
 from transaction_audit.datasets import AuditBundle, AuditDataset, DatasetType
-from transaction_audit.ingestion import load_transactions
+from transaction_audit.ingestion import load_dataset, load_transactions
 from transaction_audit.profiles import delete_import_profile, list_import_profiles, profiles_dataframe, save_import_profile
-from transaction_audit.reconciliation import reconcile_bundle
 from transaction_audit.schema import apply_schema, source_mapping_from_canonical
 from transaction_audit.validation import validate_transactions
 from transaction_audit.workflow import build_mapping_plan
@@ -174,16 +174,15 @@ def render_multi_file_reconciliation() -> None:
             vendors=uploaded_dataset(DatasetType.VENDORS, vendor_file) if vendor_file else None,
             beneficiaries=uploaded_dataset(DatasetType.BENEFICIARIES, beneficiary_file) if beneficiary_file else None,
         )
-        transaction_validation = validate_transactions(bundle.transactions.dataframe)
-        reference_result = reconcile_bundle(bundle)
+        audit_result = run_bundle_audit(bundle)
     except Exception as exc:
         st.error(f"Could not process audit bundle: {exc}")
         return
 
-    transaction_issues = transaction_validation.issues_dataframe()
-    reference_issues = reference_result.issues_dataframe()
-    skipped = reference_result.skipped_checks_dataframe()
-    combined_issues = pd.concat([transaction_issues, reference_issues], ignore_index=True)
+    transaction_issues = audit_result.transaction_issues_dataframe()
+    reference_issues = audit_result.reference_issues_dataframe()
+    skipped = audit_result.skipped_checks_dataframe()
+    combined_issues = audit_result.all_issues_dataframe()
 
     metric_columns = st.columns(4)
     metric_columns[0].metric("Transactions", bundle.transactions.row_count)
@@ -241,7 +240,7 @@ def render_multi_file_reconciliation() -> None:
 def uploaded_dataset(dataset_type: DatasetType, uploaded_file) -> AuditDataset:
     return AuditDataset(
         dataset_type=dataset_type,
-        dataframe=load_transactions(uploaded_file, filename=uploaded_file.name),
+        dataframe=load_dataset(uploaded_file, filename=uploaded_file.name),
         source_name=uploaded_file.name,
     )
 

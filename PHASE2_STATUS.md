@@ -40,9 +40,13 @@ transactions.beneficiary_id -> beneficiaries.beneficiary_id
   - `related_record_id`
 - `AuditBundle` keeps each uploaded dataset separate.
 - `joins.py` provides normalized safe joins and source row-number preservation.
+- `joins.py` rejects input files that already contain reserved internal join columns.
+- `bundle_workflow.py` runs the combined Phase 1 validation + Phase 2 reconciliation flow outside Streamlit.
 - `reconciliation.py` checks:
   - unknown vendor references
   - unknown beneficiary references
+  - duplicate vendor reference keys
+  - duplicate beneficiary reference keys
   - skipped checks for missing optional reference files
 - `bundle_cli.py` runs Phase 2 reconciliation from PowerShell.
 
@@ -123,7 +127,7 @@ http://localhost:8501
 Latest verified test run:
 
 ```text
-Ran 38 tests
+Ran 42 tests
 OK
 ```
 
@@ -134,6 +138,12 @@ Reference issues found: 2
 Skipped checks: 1
 ```
 
+Latest verified UI import:
+
+```text
+app import ok
+```
+
 ## Important Design Decisions
 
 - Keep Phase 1 single-file validation intact.
@@ -141,6 +151,7 @@ Skipped checks: 1
 - Keep Streamlit thin.
 - Keep datasets separate; do not merge everything into one giant dataframe early.
 - Report skipped checks explicitly instead of silently ignoring missing optional files.
+- Report duplicate keys in reference files as audit issues instead of letting pandas join errors leak to users.
 - Do not expose budget upload until budget reconciliation exists.
 
 ## Next Step

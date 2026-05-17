@@ -7,6 +7,7 @@ AUDIT_ROW_NUMBER = "_audit_row_number"
 LEFT_JOIN_KEY = "_left_join_key"
 RIGHT_JOIN_KEY = "_right_join_key"
 MERGE_STATUS = "_merge"
+INTERNAL_JOIN_COLUMNS = (AUDIT_ROW_NUMBER, LEFT_JOIN_KEY, RIGHT_JOIN_KEY, MERGE_STATUS)
 
 
 def normalize_join_key(series: pd.Series) -> pd.Series:
@@ -29,6 +30,7 @@ def safe_left_join(
     right_prefix: str,
     validate: str = "many_to_one",
 ) -> pd.DataFrame:
+    ensure_no_internal_column_collision(left, right)
     left_work = with_audit_row_numbers(left)
     right_work = right.copy()
     left_work[LEFT_JOIN_KEY] = normalize_join_key(left_work[left_on])
@@ -47,3 +49,11 @@ def safe_left_join(
 
 def unmatched_left_rows(joined: pd.DataFrame) -> pd.DataFrame:
     return joined[joined[MERGE_STATUS].eq("left_only")].copy()
+
+
+def ensure_no_internal_column_collision(left: pd.DataFrame, right: pd.DataFrame) -> None:
+    existing_columns = set(left.columns) | set(right.columns)
+    collisions = sorted(column for column in INTERNAL_JOIN_COLUMNS if column in existing_columns)
+    if collisions:
+        joined = ", ".join(collisions)
+        raise ValueError(f"Input data contains reserved audit join columns: {joined}")

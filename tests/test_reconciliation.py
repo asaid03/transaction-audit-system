@@ -42,6 +42,32 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual(["unknown_vendor_reference"], issues["issue_type"].tolist())
         self.assertEqual(["Missing Vendor"], issues["related_record_id"].tolist())
 
+    def test_duplicate_vendor_references_are_reported_as_audit_issues(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001"],
+                "vendor_id": ["VEN-001"],
+            },
+        )
+        vendors = _dataset(
+            DatasetType.VENDORS,
+            {
+                "vendor_id": ["VEN-001", "ven-001"],
+                "vendor_name": ["Vendor One", "Vendor One Duplicate"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, vendors=vendors))
+        issues = result.issues_dataframe()
+
+        self.assertEqual(
+            ["duplicate_vendor_reference", "duplicate_vendor_reference"],
+            issues["issue_type"].tolist(),
+        )
+        self.assertEqual(["vendors", "vendors"], issues["dataset"].tolist())
+        self.assertEqual([2, 3], issues["row_number"].tolist())
+
     def test_flags_transaction_beneficiary_missing_from_register(self):
         transactions = _dataset(
             DatasetType.TRANSACTIONS,
@@ -61,6 +87,31 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual(["unknown_beneficiary_reference"], issues["issue_type"].tolist())
         self.assertEqual(["beneficiaries"], issues["related_dataset"].tolist())
         self.assertEqual(["BEN-404"], issues["related_record_id"].tolist())
+
+    def test_duplicate_beneficiary_references_are_reported_as_audit_issues(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001"],
+                "beneficiary_id": ["BEN-001"],
+            },
+        )
+        beneficiaries = _dataset(
+            DatasetType.BENEFICIARIES,
+            {
+                "beneficiary_id": ["BEN-001", "ben-001"],
+                "beneficiary_name": ["Beneficiary One", "Beneficiary One Duplicate"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, beneficiaries=beneficiaries))
+        issues = result.issues_dataframe()
+
+        self.assertEqual(
+            ["duplicate_beneficiary_reference", "duplicate_beneficiary_reference"],
+            issues["issue_type"].tolist(),
+        )
+        self.assertEqual(["beneficiaries", "beneficiaries"], issues["dataset"].tolist())
 
     def test_reports_skipped_checks_for_missing_optional_files(self):
         transactions = _dataset(DatasetType.TRANSACTIONS, {"transaction_id": ["TXN-001"]})

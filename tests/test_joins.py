@@ -55,3 +55,16 @@ class JoinTests(unittest.TestCase):
                 right_on="vendor_id",
                 right_prefix="vendor",
             )
+
+    def test_safe_left_join_rejects_reserved_internal_columns(self):
+        transactions = pd.DataFrame({"vendor_id": ["VEN-1"], "_merge": ["both"]})
+        vendors = pd.DataFrame({"vendor_id": ["VEN-1"]})
+
+        with self.assertRaisesRegex(ValueError, "reserved audit join columns"):
+            safe_left_join(
+                transactions,
+                vendors,
+                left_on="vendor_id",
+                right_on="vendor_id",
+                right_prefix="vendor",
+            )
