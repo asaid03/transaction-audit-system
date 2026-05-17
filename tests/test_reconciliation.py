@@ -69,7 +69,11 @@ class ReconciliationTests(unittest.TestCase):
         skipped = result.skipped_checks_dataframe()
 
         self.assertEqual(
-            ["transaction_vendor_reference", "transaction_beneficiary_reference"],
+            [
+                "transaction_vendor_reference",
+                "transaction_beneficiary_reference",
+                "transaction_budget_reference",
+            ],
             skipped["check_name"].tolist(),
         )
 

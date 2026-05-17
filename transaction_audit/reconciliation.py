@@ -68,6 +68,23 @@ def reconcile_bundle(bundle: AuditBundle) -> ReconciliationResult:
         issues.extend(beneficiary_result.issues)
         skipped_checks.extend(beneficiary_result.skipped_checks)
 
+    if bundle.budget is None:
+        skipped_checks.append(
+            SkippedCheck(
+                check_name="transaction_budget_reference",
+                dataset="budget",
+                reason="Budget file was not uploaded.",
+            )
+        )
+    else:
+        skipped_checks.append(
+            SkippedCheck(
+                check_name="transaction_budget_reference",
+                dataset="budget",
+                reason="Budget reconciliation is planned but not implemented yet.",
+            )
+        )
+
     return ReconciliationResult(issues=issues, skipped_checks=skipped_checks)
 
 

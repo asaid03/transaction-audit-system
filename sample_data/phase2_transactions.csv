@@ -1,0 +1,6 @@
+transaction_id,transaction_date,amount,currency,vendor_id,counterparty,beneficiary_id,budget_line_id,description
+TXN-2001,01/05/2026,450.00,USD,VEN-001,Somali Medical Supplies,,BL-HEALTH,Clinic supply purchase
+TXN-2002,02/05/2026,120.00,USD,,,BEN-001,BL-CASH,Cash transfer payment
+TXN-2003,03/05/2026,120.00,USD,,,BEN-404,BL-CASH,Unknown beneficiary payment
+TXN-2004,04/05/2026,900.00,USD,VEN-404,Unknown Supplier,,BL-OPS,Unknown supplier invoice
+TXN-2005,05/05/2026,300.00,USD,VEN-002,Logistics Partner,,BL-LOGISTICS,Transport services
