@@ -1,3 +1,4 @@
+import pandas as pd
 import streamlit as st
 
 from transaction_audit.audit import build_audit_summary, build_audit_workbook, issue_counts_dataframe, summary_dataframe
@@ -173,32 +174,52 @@ def render_multi_file_reconciliation() -> None:
             vendors=uploaded_dataset(DatasetType.VENDORS, vendor_file) if vendor_file else None,
             beneficiaries=uploaded_dataset(DatasetType.BENEFICIARIES, beneficiary_file) if beneficiary_file else None,
         )
-        result = reconcile_bundle(bundle)
+        transaction_validation = validate_transactions(bundle.transactions.dataframe)
+        reference_result = reconcile_bundle(bundle)
     except Exception as exc:
         st.error(f"Could not process audit bundle: {exc}")
         return
 
-    issues = result.issues_dataframe()
-    skipped = result.skipped_checks_dataframe()
+    transaction_issues = transaction_validation.issues_dataframe()
+    reference_issues = reference_result.issues_dataframe()
+    skipped = reference_result.skipped_checks_dataframe()
+    combined_issues = pd.concat([transaction_issues, reference_issues], ignore_index=True)
 
     metric_columns = st.columns(4)
     metric_columns[0].metric("Transactions", bundle.transactions.row_count)
-    metric_columns[1].metric("Reference Issues", len(issues))
-    metric_columns[2].metric("Reference Files", len(bundle.reference_datasets()))
+    metric_columns[1].metric("Transaction Issues", len(transaction_issues))
+    metric_columns[2].metric("Reference Issues", len(reference_issues))
     metric_columns[3].metric("Skipped Checks", len(skipped))
 
-    tab_summary, tab_issues, tab_skipped, tab_data = st.tabs(
-        ["Dataset Summary", "Reference Issues", "Skipped Checks", "Input Data"]
+    tab_summary, tab_transaction_issues, tab_reference_issues, tab_skipped, tab_data = st.tabs(
+        ["Dataset Summary", "Transaction Issues", "Reference Issues", "Skipped Checks", "Input Data"]
     )
 
     with tab_summary:
         st.dataframe(bundle.dataset_summary(), use_container_width=True)
+        st.write("All issues")
+        st.dataframe(combined_issues, use_container_width=True)
+        st.download_button(
+            "Download all issues CSV",
+            data=combined_issues.to_csv(index=False).encode("utf-8"),
+            file_name="multi_file_audit_issues.csv",
+            mime="text/csv",
+        )
 
-    with tab_issues:
-        st.dataframe(issues, use_container_width=True)
+    with tab_transaction_issues:
+        st.dataframe(transaction_issues, use_container_width=True)
+        st.download_button(
+            "Download transaction issues CSV",
+            data=transaction_issues.to_csv(index=False).encode("utf-8"),
+            file_name="transaction_validation_issues.csv",
+            mime="text/csv",
+        )
+
+    with tab_reference_issues:
+        st.dataframe(reference_issues, use_container_width=True)
         st.download_button(
             "Download reference issues CSV",
-            data=issues.to_csv(index=False).encode("utf-8"),
+            data=reference_issues.to_csv(index=False).encode("utf-8"),
             file_name="reference_issues.csv",
             mime="text/csv",
         )
@@ -250,8 +271,6 @@ def render_profile_manager(profiles) -> None:
 
 
 def profile_mapping_dataframe(source_to_canonical: dict[str, str]):
-    import pandas as pd
-
     rows = [
         {"source_column": source, "canonical_field": canonical}
         for source, canonical in source_to_canonical.items()

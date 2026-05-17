@@ -62,9 +62,12 @@ Multi-file mode currently supports:
 It shows:
 
 - dataset summary
+- transaction validation issues
 - reference issues
 - skipped checks
 - input data previews
+- combined issue CSV download
+- transaction issues CSV download
 - reference issues CSV download
 
 Budget upload is intentionally not shown yet because budget reconciliation is not implemented.
@@ -81,6 +84,7 @@ sample_data/phase2_beneficiaries.csv
 
 Expected sample findings:
 
+- `TXN-2005` has a zero amount transaction-validation warning
 - `VEN-404` missing from vendors
 - `BEN-404` missing from beneficiaries
 - budget check skipped because no budget file is uploaded
@@ -141,17 +145,26 @@ Skipped checks: 1
 
 ## Next Step
 
-The next implementation slice should wire Phase 1 transaction validation into multi-file mode.
+Phase 1 transaction validation is now wired into multi-file mode.
 
-Current multi-file mode only runs reference reconciliation.
-
-Next desired behavior:
+Current multi-file mode output:
 
 ```text
 Multi-file mode output =
   Phase 1 transaction validation issues
   + Phase 2 reference reconciliation issues
   + skipped checks
+```
+
+Next desired implementation slice:
+
+```text
+Add a multi-file audit workbook/export that includes:
+  dataset_summary
+  transaction_issues
+  reference_issues
+  skipped_checks
+  input datasets
 ```
 
 Do not start budget checks or schema-profile expansion before this is done.

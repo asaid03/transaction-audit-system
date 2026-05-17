@@ -3,6 +3,7 @@ from pathlib import Path
 
 from transaction_audit.bundle_cli import build_bundle_from_paths
 from transaction_audit.reconciliation import reconcile_bundle
+from transaction_audit.validation import validate_transactions
 
 
 class BundleCliTests(unittest.TestCase):
@@ -15,7 +16,10 @@ class BundleCliTests(unittest.TestCase):
 
         result = reconcile_bundle(bundle)
         issue_types = result.issues_dataframe()["issue_type"].tolist()
+        transaction_validation = validate_transactions(bundle.transactions.dataframe)
+        transaction_issue_types = transaction_validation.issues_dataframe()["issue_type"].tolist()
 
         self.assertEqual(5, bundle.transactions.row_count)
+        self.assertIn("zero_amount", transaction_issue_types)
         self.assertIn("unknown_vendor_reference", issue_types)
         self.assertIn("unknown_beneficiary_reference", issue_types)
