@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 from transaction_audit.datasets import AuditBundle, AuditDataset, DatasetType
-from transaction_audit.ingestion import load_transactions
+from transaction_audit.ingestion import load_dataset
 from transaction_audit.reconciliation import reconcile_bundle
 
 
@@ -29,7 +29,7 @@ def _load_optional_dataset(dataset_type: DatasetType, path: Path | None) -> Audi
 def _load_dataset(dataset_type: DatasetType, path: Path) -> AuditDataset:
     return AuditDataset(
         dataset_type=dataset_type,
-        dataframe=load_transactions(path),
+        dataframe=load_dataset(path),
         source_name=path.name,
     )
 

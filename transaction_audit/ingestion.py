@@ -4,7 +4,7 @@ from typing import BinaryIO
 import pandas as pd
 
 
-def load_transactions(source: str | Path | BinaryIO, filename: str | None = None) -> pd.DataFrame:
+def load_dataset(source: str | Path | BinaryIO, filename: str | None = None) -> pd.DataFrame:
     suffix_source = filename or str(source)
     suffix = Path(suffix_source).suffix.lower()
 
@@ -16,6 +16,10 @@ def load_transactions(source: str | Path | BinaryIO, filename: str | None = None
         raise ValueError("Unsupported file type. Please provide a CSV or Excel file.")
 
     return dataframe
+
+
+def load_transactions(source: str | Path | BinaryIO, filename: str | None = None) -> pd.DataFrame:
+    return load_dataset(source, filename=filename)
 
 
 def _read_csv_preserving_raw_values(source: str | Path | BinaryIO) -> pd.DataFrame:

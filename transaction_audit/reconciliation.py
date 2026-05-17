@@ -126,7 +126,7 @@ def check_transaction_vendor_references(
             related_record_id=row[transaction_field],
             message=f"Vendor reference '{row[transaction_field]}' was not found in the vendor file.",
         )
-        for _, row in unmatched_left_rows(joined).iterrows()
+        for row in unmatched_left_rows(joined).to_dict("records")
         if _has_value(row[transaction_field])
     ]
     return ReconciliationResult(issues=issues, skipped_checks=[])
@@ -164,14 +164,14 @@ def check_transaction_beneficiary_references(
             related_record_id=row["beneficiary_id"],
             message=f"Beneficiary reference '{row['beneficiary_id']}' was not found in the beneficiary file.",
         )
-        for _, row in unmatched_left_rows(joined).iterrows()
+        for row in unmatched_left_rows(joined).to_dict("records")
         if _has_value(row["beneficiary_id"])
     ]
     return ReconciliationResult(issues=issues, skipped_checks=[])
 
 
 def _reference_issue(
-    row: pd.Series,
+    row: dict[str, object],
     field: str,
     issue_type: str,
     related_dataset: str,
