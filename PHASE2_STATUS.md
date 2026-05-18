@@ -92,15 +92,30 @@ Multi-file mapping behavior:
 
 Multi-file workbook sheets:
 
+- `read_me`
 - `summary`
+- `review_findings`
 - `dataset_summary`
-- `all_issues`
 - `issue_counts`
 - `transaction_issues`
 - `reference_issues`
+- `raw_issues`
 - `skipped_checks`
 - `schema_mappings`
 - uploaded input datasets such as `transactions`, `vendors`, and `beneficiaries`
+
+Reviewer-facing output:
+
+- `review_findings` is the primary sheet for humans.
+- It includes:
+  - finding ID
+  - priority
+  - review status
+  - plain-language finding title
+  - why the issue matters
+  - recommended action
+  - affected dataset/row/record evidence
+- Raw issue sheets are retained for traceability but are no longer the main review surface.
 
 ## Sample Files
 
@@ -153,7 +168,7 @@ http://localhost:8501
 Latest verified test run:
 
 ```text
-Ran 48 tests
+Ran 49 tests
 OK
 ```
 

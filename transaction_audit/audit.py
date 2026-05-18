@@ -4,10 +4,84 @@ import io
 from datetime import UTC, datetime
 
 import pandas as pd
+from openpyxl.utils import get_column_letter
 
 from transaction_audit.datasets import DatasetType
 from transaction_audit.schema import SchemaResult
 from transaction_audit.types import ValidationResult
+
+
+FINDING_COLUMNS = [
+    "finding_id",
+    "priority",
+    "review_status",
+    "finding",
+    "why_it_matters",
+    "recommended_action",
+    "dataset",
+    "row_number",
+    "transaction_id",
+    "field",
+    "related_dataset",
+    "related_record_id",
+    "evidence",
+    "technical_issue_type",
+]
+
+README_COLUMNS = ["section", "details"]
+
+ISSUE_GUIDANCE = {
+    "unknown_vendor_reference": {
+        "finding": "Payment references an unapproved or missing vendor",
+        "why_it_matters": "The transaction points to a vendor that was not found in the uploaded vendor file.",
+        "recommended_action": "Confirm whether the vendor should be added to the approved vendor list or investigate the payment.",
+    },
+    "unknown_beneficiary_reference": {
+        "finding": "Payment references an unknown beneficiary",
+        "why_it_matters": "The transaction points to a beneficiary that was not found in the uploaded beneficiary register.",
+        "recommended_action": "Confirm the beneficiary identity against the programme register before approving the payment.",
+    },
+    "duplicate_vendor_reference": {
+        "finding": "Duplicate vendor reference in master data",
+        "why_it_matters": "Duplicate vendor keys can cause payments to match the wrong supplier record.",
+        "recommended_action": "Review the vendor master file and merge, correct, or retire the duplicate record.",
+    },
+    "duplicate_beneficiary_reference": {
+        "finding": "Duplicate beneficiary reference in register",
+        "why_it_matters": "Duplicate beneficiary keys can hide overpayments or misdirected cash transfers.",
+        "recommended_action": "Review the beneficiary register and confirm which record is valid.",
+    },
+    "duplicate_transaction_id": {
+        "finding": "Duplicate transaction ID",
+        "why_it_matters": "The same transaction identifier appears more than once.",
+        "recommended_action": "Check whether the records are duplicate exports, corrections, or separate payments incorrectly sharing an ID.",
+    },
+    "possible_duplicate_payment": {
+        "finding": "Possible duplicate payment",
+        "why_it_matters": "The payment resembles another transaction by date, amount, and counterparty.",
+        "recommended_action": "Compare the matching payments and confirm whether both should exist.",
+    },
+    "zero_amount": {
+        "finding": "Zero amount transaction",
+        "why_it_matters": "A zero amount entry may be a reversal, placeholder, or export error.",
+        "recommended_action": "Confirm why this transaction is present and whether it should be excluded from audit totals.",
+    },
+    "missing_required_value": {
+        "finding": "Required transaction field is missing",
+        "why_it_matters": "The transaction cannot be reviewed reliably without this field.",
+        "recommended_action": "Request a corrected export or fill the missing value from source records.",
+    },
+    "invalid_amount": {
+        "finding": "Amount could not be parsed",
+        "why_it_matters": "The amount is not in a format the audit engine can treat as money.",
+        "recommended_action": "Correct the source amount format and rerun the audit.",
+    },
+    "invalid_transaction_date": {
+        "finding": "Transaction date could not be parsed",
+        "why_it_matters": "The transaction cannot be placed in the correct audit period.",
+        "recommended_action": "Correct the date format and rerun the audit.",
+    },
+}
 
 
 def build_audit_summary(result: ValidationResult, source_name: str) -> dict[str, object]:
@@ -49,6 +123,70 @@ def issue_counts_from_dataframe(issues: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def review_findings_dataframe(issues: pd.DataFrame) -> pd.DataFrame:
+    if issues.empty:
+        return pd.DataFrame(columns=FINDING_COLUMNS)
+
+    rows = []
+    for position, issue in enumerate(issues.to_dict("records"), start=1):
+        guidance = ISSUE_GUIDANCE.get(
+            issue["issue_type"],
+            {
+                "finding": str(issue["issue_type"]).replace("_", " ").title(),
+                "why_it_matters": "This issue may affect audit reliability and should be reviewed.",
+                "recommended_action": "Review the source record and document the resolution.",
+            },
+        )
+        rows.append(
+            {
+                "finding_id": f"F-{position:04d}",
+                "priority": priority_for_severity(issue["severity"]),
+                "review_status": "Needs review",
+                "finding": guidance["finding"],
+                "why_it_matters": guidance["why_it_matters"],
+                "recommended_action": guidance["recommended_action"],
+                "dataset": issue["dataset"],
+                "row_number": issue["row_number"],
+                "transaction_id": issue["transaction_id"],
+                "field": issue["field"],
+                "related_dataset": issue["related_dataset"],
+                "related_record_id": issue["related_record_id"],
+                "evidence": issue["message"],
+                "technical_issue_type": issue["issue_type"],
+            }
+        )
+
+    return pd.DataFrame(rows, columns=FINDING_COLUMNS)
+
+
+def priority_for_severity(severity: object) -> str:
+    if str(severity).lower() == "error":
+        return "High"
+    if str(severity).lower() == "warning":
+        return "Medium"
+    return "Low"
+
+
+def audit_readme_dataframe() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "section": "How to use this workbook",
+                "details": "Start with review_findings. Each row explains the issue, why it matters, and the recommended review action.",
+            },
+            {
+                "section": "Review status",
+                "details": "Use the review_status column to track whether each finding is open, resolved, accepted, or needs follow-up.",
+            },
+            {
+                "section": "Raw evidence",
+                "details": "Use raw_issues and the input dataset sheets only when you need the underlying technical detail.",
+            },
+        ],
+        columns=README_COLUMNS,
+    )
+
+
 def build_audit_workbook(
     result: ValidationResult,
     schema_result: SchemaResult,
@@ -57,16 +195,14 @@ def build_audit_workbook(
     output = io.BytesIO()
     sheets = {
         "summary": summary_dataframe(summary),
-        "issues": result.issues_dataframe(),
+        "review_findings": review_findings_dataframe(result.issues_dataframe()),
+        "raw_issues": result.issues_dataframe(),
         "issue_counts": issue_counts_dataframe(result),
         "schema_mapping": schema_result.mapping_dataframe(),
         "transactions": result.transactions,
     }
 
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        for sheet_name, dataframe in sheets.items():
-            dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
-
+    write_workbook(output, sheets)
     return output.getvalue()
 
 
@@ -112,12 +248,14 @@ def build_bundle_audit_workbook(
     output = io.BytesIO()
     all_issues = bundle_result.all_issues_dataframe()
     sheets = {
+        "read_me": audit_readme_dataframe(),
         "summary": summary_dataframe(build_bundle_audit_summary(bundle_result)),
+        "review_findings": review_findings_dataframe(all_issues),
         "dataset_summary": bundle_result.bundle.dataset_summary(),
-        "all_issues": all_issues,
         "issue_counts": issue_counts_from_dataframe(all_issues),
         "transaction_issues": bundle_result.transaction_issues_dataframe(),
         "reference_issues": bundle_result.reference_issues_dataframe(),
+        "raw_issues": all_issues,
         "skipped_checks": bundle_result.skipped_checks_dataframe(),
         "schema_mappings": schema_mappings_dataframe(schema_results),
         "transactions": bundle_result.bundle.transactions.dataframe,
@@ -130,8 +268,23 @@ def build_bundle_audit_workbook(
     if bundle_result.bundle.budget is not None:
         sheets["budget"] = bundle_result.bundle.budget.dataframe
 
+    write_workbook(output, sheets)
+    return output.getvalue()
+
+
+def write_workbook(output: io.BytesIO, sheets: dict[str, pd.DataFrame]) -> None:
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         for sheet_name, dataframe in sheets.items():
             dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
+            format_worksheet(writer.sheets[sheet_name], dataframe)
 
-    return output.getvalue()
+
+def format_worksheet(worksheet, dataframe: pd.DataFrame) -> None:
+    worksheet.freeze_panes = "A2"
+    worksheet.auto_filter.ref = worksheet.dimensions
+
+    for index, column in enumerate(dataframe.columns, start=1):
+        values = dataframe[column].dropna().astype(str).head(100).tolist() if column in dataframe else []
+        longest_value = max([len(str(column)), *(len(value) for value in values)], default=len(str(column)))
+        width = min(max(longest_value + 2, 12), 60)
+        worksheet.column_dimensions[get_column_letter(index)].width = width

@@ -4,7 +4,13 @@ import unittest
 import openpyxl
 import pandas as pd
 
-from transaction_audit.audit import build_audit_summary, build_audit_workbook, build_bundle_audit_workbook, issue_counts_dataframe
+from transaction_audit.audit import (
+    build_audit_summary,
+    build_audit_workbook,
+    build_bundle_audit_workbook,
+    issue_counts_dataframe,
+    review_findings_dataframe,
+)
 from transaction_audit.bundle_workflow import run_bundle_audit
 from transaction_audit.datasets import AuditBundle, AuditDataset, DatasetType
 from transaction_audit.schema import apply_schema
@@ -51,9 +57,30 @@ class AuditTests(unittest.TestCase):
         workbook = openpyxl.load_workbook(io.BytesIO(workbook_bytes), read_only=True)
 
         self.assertEqual(
-            {"summary", "issues", "issue_counts", "schema_mapping", "transactions"},
+            {"summary", "review_findings", "raw_issues", "issue_counts", "schema_mapping", "transactions"},
             set(workbook.sheetnames),
         )
+
+    def test_review_findings_explain_issue_and_action(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001"],
+                "transaction_date": ["2026-04-01"],
+                "account_id": ["ACC-1"],
+                "amount": ["0"],
+                "currency": ["GBP"],
+                "counterparty": ["Vendor A"],
+            }
+        )
+        result = validate_transactions(dataframe)
+
+        findings = review_findings_dataframe(result.issues_dataframe())
+
+        self.assertIn("finding", findings.columns)
+        self.assertIn("recommended_action", findings.columns)
+        self.assertIn("review_status", findings.columns)
+        self.assertEqual("Needs review", findings.loc[0, "review_status"])
+        self.assertEqual("Zero amount transaction", findings.loc[0, "finding"])
 
     def test_build_bundle_audit_workbook_contains_multi_file_review_sheets(self):
         transactions = pd.DataFrame(
@@ -97,12 +124,14 @@ class AuditTests(unittest.TestCase):
 
         self.assertEqual(
             {
+                "read_me",
                 "summary",
+                "review_findings",
                 "dataset_summary",
-                "all_issues",
                 "issue_counts",
                 "transaction_issues",
                 "reference_issues",
+                "raw_issues",
                 "skipped_checks",
                 "schema_mappings",
                 "transactions",

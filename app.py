@@ -6,6 +6,7 @@ from transaction_audit.audit import (
     build_audit_workbook,
     build_bundle_audit_workbook,
     issue_counts_dataframe,
+    review_findings_dataframe,
     summary_dataframe,
 )
 from transaction_audit.bundle_workflow import run_bundle_audit
@@ -16,6 +17,19 @@ from transaction_audit.profiles import delete_import_profile, list_import_profil
 from transaction_audit.schema import apply_schema, source_mapping_from_canonical
 from transaction_audit.validation import validate_transactions
 from transaction_audit.workflow import allowed_mapping_columns, apply_mapping_plan, build_mapping_plan, required_mapping_columns
+
+
+FINDING_DISPLAY_COLUMNS = [
+    "finding_id",
+    "priority",
+    "review_status",
+    "finding",
+    "recommended_action",
+    "dataset",
+    "row_number",
+    "transaction_id",
+    "related_record_id",
+]
 
 
 def main() -> None:
@@ -103,6 +117,7 @@ def main() -> None:
 def render_results(result, schema_result, summary: dict[str, object]) -> None:
     summary_frame = summary_dataframe(summary)
     issues_frame = result.issues_dataframe()
+    findings_frame = review_findings_dataframe(issues_frame)
     issue_counts_frame = issue_counts_dataframe(result)
     audit_workbook = build_audit_workbook(result, schema_result, summary)
 
@@ -124,7 +139,7 @@ def render_results(result, schema_result, summary: dict[str, object]) -> None:
         st.caption("Canonical dataframe passed to the pure Python validation engine.")
 
     with tab_issues:
-        st.dataframe(issues_frame, use_container_width=True)
+        st.dataframe(display_findings(findings_frame), use_container_width=True)
         if not issue_counts_frame.empty:
             st.write("Issue counts")
             st.dataframe(issue_counts_frame, use_container_width=True)
@@ -234,6 +249,7 @@ def render_multi_file_reconciliation(profiles) -> None:
     reference_issues = audit_result.reference_issues_dataframe()
     skipped = audit_result.skipped_checks_dataframe()
     combined_issues = audit_result.all_issues_dataframe()
+    review_findings = review_findings_dataframe(combined_issues)
 
     metric_columns = st.columns(4)
     metric_columns[0].metric("Transactions", bundle.transactions.row_count)
@@ -252,7 +268,7 @@ def render_multi_file_reconciliation(profiles) -> None:
         st.success("No audit issues found in the uploaded files.")
     else:
         st.warning("Audit completed with issues for review.")
-        st.dataframe(combined_issues, use_container_width=True)
+        st.dataframe(display_findings(review_findings), use_container_width=True)
 
     with st.expander("Dataset and mapping details"):
         st.dataframe(bundle.dataset_summary(), use_container_width=True)
@@ -407,6 +423,12 @@ def mapping_status_row(dataset_type: DatasetType, source_name: str, schema_resul
 
 def profiles_for_dataset(profiles, dataset_type: DatasetType):
     return [profile for profile in profiles if profile.dataset_type == dataset_type.value]
+
+
+def display_findings(findings: pd.DataFrame) -> pd.DataFrame:
+    if findings.empty:
+        return findings
+    return findings[[column for column in FINDING_DISPLAY_COLUMNS if column in findings.columns]]
 
 
 def render_profile_manager(profiles) -> None:
