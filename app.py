@@ -1,7 +1,13 @@
 import pandas as pd
 import streamlit as st
 
-from transaction_audit.audit import build_audit_summary, build_audit_workbook, issue_counts_dataframe, summary_dataframe
+from transaction_audit.audit import (
+    build_audit_summary,
+    build_audit_workbook,
+    build_bundle_audit_workbook,
+    issue_counts_dataframe,
+    summary_dataframe,
+)
 from transaction_audit.bundle_workflow import run_bundle_audit
 from transaction_audit.config import REQUIRED_COLUMNS
 from transaction_audit.datasets import AuditBundle, AuditDataset, DATASET_DEFINITIONS, DatasetType
@@ -200,8 +206,7 @@ def render_multi_file_reconciliation(profiles) -> None:
                     source_name=uploaded_file.name,
                 )
 
-        st.write("Mapping summary")
-        st.dataframe(pd.DataFrame(mapping_rows), use_container_width=True)
+        mapping_summary = pd.DataFrame(mapping_rows)
 
         blocked = [
             DATASET_DEFINITIONS[dataset_type].display_name
@@ -209,6 +214,8 @@ def render_multi_file_reconciliation(profiles) -> None:
             if not schema_result.has_required_schema
         ]
         if blocked:
+            st.write("Mapping summary")
+            st.dataframe(mapping_summary, use_container_width=True)
             st.error("Fix required schema mappings before reconciliation can run: " + ", ".join(blocked))
             return
 
@@ -218,6 +225,7 @@ def render_multi_file_reconciliation(profiles) -> None:
             beneficiaries=prepared_datasets.get(DatasetType.BENEFICIARIES),
         )
         audit_result = run_bundle_audit(bundle)
+        audit_workbook = build_bundle_audit_workbook(audit_result, schema_results)
     except Exception as exc:
         st.error(f"Could not process audit bundle: {exc}")
         return
@@ -233,22 +241,26 @@ def render_multi_file_reconciliation(profiles) -> None:
     metric_columns[2].metric("Reference Issues", len(reference_issues))
     metric_columns[3].metric("Skipped Checks", len(skipped))
 
-    tab_summary, tab_transaction_issues, tab_reference_issues, tab_skipped, tab_data = st.tabs(
-        ["Dataset Summary", "Transaction Issues", "Reference Issues", "Skipped Checks", "Input Data"]
+    st.download_button(
+        "Download audit workbook",
+        data=audit_workbook,
+        file_name="multi_file_audit_workbook.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-    with tab_summary:
-        st.dataframe(bundle.dataset_summary(), use_container_width=True)
-        st.write("All issues")
+    if combined_issues.empty:
+        st.success("No audit issues found in the uploaded files.")
+    else:
+        st.warning("Audit completed with issues for review.")
         st.dataframe(combined_issues, use_container_width=True)
-        st.download_button(
-            "Download all issues CSV",
-            data=combined_issues.to_csv(index=False).encode("utf-8"),
-            file_name="multi_file_audit_issues.csv",
-            mime="text/csv",
-        )
 
-    with tab_transaction_issues:
+    with st.expander("Dataset and mapping details"):
+        st.dataframe(bundle.dataset_summary(), use_container_width=True)
+        st.write("Mapping summary")
+        st.dataframe(mapping_summary, use_container_width=True)
+
+    with st.expander("CSV downloads and detailed issue tables"):
+        st.write("Transaction issues")
         st.dataframe(transaction_issues, use_container_width=True)
         st.download_button(
             "Download transaction issues CSV",
@@ -257,7 +269,7 @@ def render_multi_file_reconciliation(profiles) -> None:
             mime="text/csv",
         )
 
-    with tab_reference_issues:
+        st.write("Reference issues")
         st.dataframe(reference_issues, use_container_width=True)
         st.download_button(
             "Download reference issues CSV",
@@ -266,10 +278,17 @@ def render_multi_file_reconciliation(profiles) -> None:
             mime="text/csv",
         )
 
-    with tab_skipped:
+        st.write("Skipped checks")
         st.dataframe(skipped, use_container_width=True)
 
-    with tab_data:
+        st.download_button(
+            "Download all issues CSV",
+            data=combined_issues.to_csv(index=False).encode("utf-8"),
+            file_name="multi_file_audit_issues.csv",
+            mime="text/csv",
+        )
+
+    with st.expander("Input data previews"):
         st.write("Transactions")
         st.dataframe(bundle.transactions.dataframe, use_container_width=True)
         if bundle.vendors:

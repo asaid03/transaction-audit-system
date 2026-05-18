@@ -1,6 +1,6 @@
 # Phase 2 Status
 
-Last updated: 2026-05-17
+Last updated: 2026-05-18
 
 ## Branch
 
@@ -64,18 +64,16 @@ Multi-file mode currently supports:
 - beneficiaries upload
 - auto-detect-first schema mapping per uploaded dataset
 - dataset-scoped import profiles
+- multi-file audit workbook download
 
 It shows:
 
-- mapping summary
-- dataset summary
-- transaction validation issues
-- reference issues
-- skipped checks
-- input data previews
-- combined issue CSV download
-- transaction issues CSV download
-- reference issues CSV download
+- top-level metrics
+- all issues table when issues exist
+- multi-file audit workbook download
+- dataset and mapping details in an expander
+- CSV downloads and detailed issue tables in an expander
+- input data previews in an expander
 
 Budget upload is intentionally not shown yet because budget reconciliation is not implemented.
 
@@ -91,6 +89,18 @@ Multi-file mapping behavior:
   - budget later
 - Existing older profiles without `dataset_type` load as transaction profiles.
 - `AuditBundle` receives canonical dataframes only.
+
+Multi-file workbook sheets:
+
+- `summary`
+- `dataset_summary`
+- `all_issues`
+- `issue_counts`
+- `transaction_issues`
+- `reference_issues`
+- `skipped_checks`
+- `schema_mappings`
+- uploaded input datasets such as `transactions`, `vendors`, and `beneficiaries`
 
 ## Sample Files
 
@@ -143,7 +153,7 @@ http://localhost:8501
 Latest verified test run:
 
 ```text
-Ran 47 tests
+Ran 48 tests
 OK
 ```
 
@@ -160,6 +170,13 @@ Latest verified UI import:
 app import ok
 ```
 
+Latest verified compile check:
+
+```text
+python -m compileall app.py transaction_audit tests
+OK
+```
+
 ## Important Design Decisions
 
 - Keep Phase 1 single-file validation intact.
@@ -172,8 +189,6 @@ app import ok
 
 ## Next Step
 
-Phase 1 transaction validation is now wired into multi-file mode.
-
 Current multi-file mode output:
 
 ```text
@@ -181,24 +196,26 @@ Multi-file mode output =
   Phase 1 transaction validation issues
   + Phase 2 reference reconciliation issues
   + skipped checks
+  + audit workbook export
 ```
 
 Next desired implementation slice:
 
 ```text
-Add a multi-file audit workbook/export that includes:
-  dataset_summary
-  transaction_issues
-  reference_issues
-  skipped_checks
-  input datasets
+Budget reconciliation:
+  transactions.budget_line_id -> budget.budget_line_id
+  sum actual spend by budget line
+  compare against approved_amount
+  flag over-budget lines for review
 ```
 
-Do not start budget checks or schema-profile expansion before this is done.
+Do not start more advanced anomaly rules before budget reconciliation is in place.
 
 ## Useful Recent Commits
 
 ```text
+f54cded Add multi-file schema mapping
+c4e814b Harden Phase 2 reconciliation workflow
 d6fd2ac Add Phase 2 reconciliation UI mode
 f392ccf Clean up Phase 2 reconciliation loading
 15831e1 Add Phase 2 sample reconciliation CLI
