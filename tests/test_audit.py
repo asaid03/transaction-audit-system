@@ -57,7 +57,15 @@ class AuditTests(unittest.TestCase):
         workbook = openpyxl.load_workbook(io.BytesIO(workbook_bytes), read_only=True)
 
         self.assertEqual(
-            {"summary", "review_findings", "raw_issues", "issue_counts", "schema_mapping", "transactions"},
+            {
+                "summary",
+                "review_findings",
+                "finding_summary",
+                "raw_issues",
+                "issue_counts",
+                "schema_mapping",
+                "transactions",
+            },
             set(workbook.sheetnames),
         )
 
@@ -81,6 +89,39 @@ class AuditTests(unittest.TestCase):
         self.assertIn("review_status", findings.columns)
         self.assertEqual("Needs review", findings.loc[0, "review_status"])
         self.assertEqual("Zero amount transaction", findings.loc[0, "finding"])
+
+    def test_review_findings_sort_high_priority_before_warnings(self):
+        issues = pd.DataFrame(
+            [
+                {
+                    "dataset": "transactions",
+                    "row_number": 2,
+                    "transaction_id": "TXN-001",
+                    "field": "amount",
+                    "issue_type": "zero_amount",
+                    "severity": "warning",
+                    "related_dataset": None,
+                    "related_record_id": None,
+                    "message": "Zero amount.",
+                },
+                {
+                    "dataset": "transactions",
+                    "row_number": 3,
+                    "transaction_id": "TXN-002",
+                    "field": "vendor_id",
+                    "issue_type": "unknown_vendor_reference",
+                    "severity": "error",
+                    "related_dataset": "vendors",
+                    "related_record_id": "VEN-404",
+                    "message": "Vendor reference was not found.",
+                },
+            ]
+        )
+
+        findings = review_findings_dataframe(issues)
+
+        self.assertEqual("High", findings.loc[0, "priority"])
+        self.assertEqual("Payment references an unapproved or missing vendor", findings.loc[0, "finding"])
 
     def test_build_bundle_audit_workbook_contains_multi_file_review_sheets(self):
         transactions = pd.DataFrame(
@@ -127,6 +168,7 @@ class AuditTests(unittest.TestCase):
                 "read_me",
                 "summary",
                 "review_findings",
+                "finding_summary",
                 "dataset_summary",
                 "issue_counts",
                 "transaction_issues",

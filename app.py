@@ -190,6 +190,8 @@ def render_multi_file_reconciliation(profiles) -> None:
         st.warning("Upload at least one reference file, such as vendors or beneficiaries.")
         return
 
+    adjust_mappings = st.checkbox("Review or adjust schema mappings", value=False)
+
     try:
         uploaded_files = {
             DatasetType.TRANSACTIONS: transaction_file,
@@ -205,12 +207,15 @@ def render_multi_file_reconciliation(profiles) -> None:
                 continue
 
             raw_dataframe = load_dataset(uploaded_file, filename=uploaded_file.name)
-            schema_result, selected_profile = render_dataset_mapping(
-                dataset_type=dataset_type,
-                raw_dataframe=raw_dataframe,
-                source_name=uploaded_file.name,
-                profiles=profiles,
-            )
+            schema_result, selected_profile = resolve_dataset_mapping(dataset_type, raw_dataframe, profiles)
+
+            if adjust_mappings or not schema_result.has_required_schema:
+                schema_result, selected_profile = render_dataset_mapping(
+                    dataset_type=dataset_type,
+                    raw_dataframe=raw_dataframe,
+                    source_name=uploaded_file.name,
+                    profiles=profiles,
+                )
             schema_results[dataset_type] = schema_result
             mapping_rows.append(mapping_status_row(dataset_type, uploaded_file.name, schema_result, selected_profile))
 
@@ -408,6 +413,18 @@ def best_matching_profile(raw_dataframe, dataset_type: DatasetType, profiles):
         if result.has_required_schema:
             return profile
     return None
+
+
+def resolve_dataset_mapping(dataset_type: DatasetType, raw_dataframe: pd.DataFrame, profiles):
+    available_profiles = profiles_for_dataset(profiles, dataset_type)
+    selected_profile = best_matching_profile(raw_dataframe, dataset_type, available_profiles)
+    mapping_plan = build_mapping_plan(raw_dataframe, selected_profile, dataset_type=dataset_type)
+    schema_result = apply_mapping_plan(
+        raw_dataframe,
+        mapping_plan.canonical_to_source,
+        dataset_type=dataset_type,
+    )
+    return schema_result, selected_profile
 
 
 def mapping_status_row(dataset_type: DatasetType, source_name: str, schema_result, selected_profile) -> dict[str, object]:

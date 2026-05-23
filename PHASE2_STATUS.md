@@ -1,6 +1,6 @@
 # Phase 2 Status
 
-Last updated: 2026-05-18
+Last updated: 2026-05-23
 
 ## Branch
 
@@ -71,6 +71,7 @@ It shows:
 - top-level metrics
 - all issues table when issues exist
 - multi-file audit workbook download
+- mapping controls hidden unless the user asks to review them or a file needs manual mapping
 - dataset and mapping details in an expander
 - CSV downloads and detailed issue tables in an expander
 - input data previews in an expander
@@ -95,6 +96,7 @@ Multi-file workbook sheets:
 - `read_me`
 - `summary`
 - `review_findings`
+- `finding_summary`
 - `dataset_summary`
 - `issue_counts`
 - `transaction_issues`
@@ -107,6 +109,8 @@ Multi-file workbook sheets:
 Reviewer-facing output:
 
 - `review_findings` is the primary sheet for humans.
+- Findings are sorted by priority so errors appear before warnings.
+- `finding_summary` groups findings by priority and title.
 - It includes:
   - finding ID
   - priority
@@ -168,7 +172,7 @@ http://localhost:8501
 Latest verified test run:
 
 ```text
-Ran 49 tests
+Ran 50 tests
 OK
 ```
 
@@ -229,6 +233,8 @@ Do not start more advanced anomaly rules before budget reconciliation is in plac
 ## Useful Recent Commits
 
 ```text
+d900ccf Make audit outputs reviewer friendly
+8bca83d Add multi-file audit workbook
 f54cded Add multi-file schema mapping
 c4e814b Harden Phase 2 reconciliation workflow
 d6fd2ac Add Phase 2 reconciliation UI mode

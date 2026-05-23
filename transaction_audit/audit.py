@@ -26,6 +26,7 @@ FINDING_COLUMNS = [
     "related_record_id",
     "evidence",
     "technical_issue_type",
+    "review_notes",
 ]
 
 README_COLUMNS = ["section", "details"]
@@ -128,7 +129,11 @@ def review_findings_dataframe(issues: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=FINDING_COLUMNS)
 
     rows = []
-    for position, issue in enumerate(issues.to_dict("records"), start=1):
+    sorted_issues = issues.copy()
+    sorted_issues["_priority_order"] = sorted_issues["severity"].map({"error": 0, "warning": 1}).fillna(2)
+    sorted_issues = sorted_issues.sort_values(["_priority_order", "dataset", "row_number"], kind="stable")
+
+    for position, issue in enumerate(sorted_issues.drop(columns=["_priority_order"]).to_dict("records"), start=1):
         guidance = ISSUE_GUIDANCE.get(
             issue["issue_type"],
             {
@@ -153,10 +158,25 @@ def review_findings_dataframe(issues: pd.DataFrame) -> pd.DataFrame:
                 "related_record_id": issue["related_record_id"],
                 "evidence": issue["message"],
                 "technical_issue_type": issue["issue_type"],
+                "review_notes": "",
             }
         )
 
     return pd.DataFrame(rows, columns=FINDING_COLUMNS)
+
+
+def finding_summary_dataframe(findings: pd.DataFrame) -> pd.DataFrame:
+    if findings.empty:
+        return pd.DataFrame(columns=["priority", "finding", "count"])
+
+    priority_order = {"High": 0, "Medium": 1, "Low": 2}
+    summary = (
+        findings.groupby(["priority", "finding"], dropna=False)
+        .size()
+        .reset_index(name="count")
+    )
+    summary["_priority_order"] = summary["priority"].map(priority_order).fillna(99)
+    return summary.sort_values(["_priority_order", "finding"]).drop(columns=["_priority_order"])
 
 
 def priority_for_severity(severity: object) -> str:
@@ -193,10 +213,13 @@ def build_audit_workbook(
     summary: dict[str, object],
 ) -> bytes:
     output = io.BytesIO()
+    issues = result.issues_dataframe()
+    findings = review_findings_dataframe(issues)
     sheets = {
         "summary": summary_dataframe(summary),
-        "review_findings": review_findings_dataframe(result.issues_dataframe()),
-        "raw_issues": result.issues_dataframe(),
+        "review_findings": findings,
+        "finding_summary": finding_summary_dataframe(findings),
+        "raw_issues": issues,
         "issue_counts": issue_counts_dataframe(result),
         "schema_mapping": schema_result.mapping_dataframe(),
         "transactions": result.transactions,
@@ -247,10 +270,12 @@ def build_bundle_audit_workbook(
 ) -> bytes:
     output = io.BytesIO()
     all_issues = bundle_result.all_issues_dataframe()
+    findings = review_findings_dataframe(all_issues)
     sheets = {
         "read_me": audit_readme_dataframe(),
         "summary": summary_dataframe(build_bundle_audit_summary(bundle_result)),
-        "review_findings": review_findings_dataframe(all_issues),
+        "review_findings": findings,
+        "finding_summary": finding_summary_dataframe(findings),
         "dataset_summary": bundle_result.bundle.dataset_summary(),
         "issue_counts": issue_counts_from_dataframe(all_issues),
         "transaction_issues": bundle_result.transaction_issues_dataframe(),
