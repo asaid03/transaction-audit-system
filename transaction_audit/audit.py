@@ -72,6 +72,16 @@ ISSUE_GUIDANCE = {
         "why_it_matters": "The transaction cannot be reviewed reliably without this field.",
         "recommended_action": "Request a corrected export or fill the missing value from source records.",
     },
+    "missing_column": {
+        "finding": "Required transaction column is missing",
+        "why_it_matters": "The uploaded file does not contain a column required by the audit engine.",
+        "recommended_action": "Map the correct source column or request a corrected export before relying on the audit result.",
+    },
+    "missing_value": {
+        "finding": "Required transaction field is missing",
+        "why_it_matters": "The transaction cannot be reviewed reliably without this field.",
+        "recommended_action": "Request a corrected export or fill the missing value from source records.",
+    },
     "invalid_amount": {
         "finding": "Amount could not be parsed",
         "why_it_matters": "The amount is not in a format the audit engine can treat as money.",
@@ -81,6 +91,21 @@ ISSUE_GUIDANCE = {
         "finding": "Transaction date could not be parsed",
         "why_it_matters": "The transaction cannot be placed in the correct audit period.",
         "recommended_action": "Correct the date format and rerun the audit.",
+    },
+    "invalid_date": {
+        "finding": "Transaction date could not be parsed",
+        "why_it_matters": "The transaction cannot be placed in the correct audit period.",
+        "recommended_action": "Correct the date format and rerun the audit.",
+    },
+    "unsupported_currency": {
+        "finding": "Currency is outside the configured review list",
+        "why_it_matters": "The transaction uses a currency that may be outside the expected audit scope.",
+        "recommended_action": "Confirm whether this currency is valid for the audit period or update the allowed currency configuration.",
+    },
+    "large_amount": {
+        "finding": "Large amount transaction",
+        "why_it_matters": "The transaction meets or exceeds the configured large-amount review threshold.",
+        "recommended_action": "Confirm approval evidence, supporting documentation, and whether enhanced review is required.",
     },
 }
 

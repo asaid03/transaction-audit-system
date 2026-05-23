@@ -32,6 +32,10 @@ transactions.beneficiary_id -> beneficiaries.beneficiary_id
 
 ## What Works
 
+Rule/risk reference:
+
+- `AUDIT_RULES.md` lists current rule names, severities, reviewer actions, skipped checks, limitations, and planned next rules.
+
 ### Core
 
 - `ValidationIssue` is dataset-aware:
