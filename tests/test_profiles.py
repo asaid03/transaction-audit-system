@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from transaction_audit.datasets import DatasetType
 from transaction_audit.profiles import (
     DEFAULT_PROFILES_DIR,
     delete_import_profile,
@@ -21,6 +22,11 @@ VALID_MAPPING = {
     "counterparty_name": "counterparty",
 }
 
+VALID_VENDOR_MAPPING = {
+    "Supplier Code": "vendor_id",
+    "Supplier": "vendor_name",
+}
+
 
 class ProfileTests(unittest.TestCase):
     def test_default_profiles_dir_is_project_root_relative(self):
@@ -38,6 +44,7 @@ class ProfileTests(unittest.TestCase):
 
         self.assertEqual("erp-export", profile.profile_id)
         self.assertEqual(1, len(loaded))
+        self.assertEqual("transactions", loaded[0].dataset_type)
         self.assertTrue(loaded[0].complete_required_fields)
 
     def test_profiles_dataframe_contains_review_fields(self):
@@ -47,8 +54,24 @@ class ProfileTests(unittest.TestCase):
 
         dataframe = profiles_dataframe(profiles)
 
-        self.assertEqual(["profile_id", "display_name", "description"], list(dataframe.columns[:3]))
+        self.assertEqual(["profile_id", "dataset_type", "display_name"], list(dataframe.columns[:3]))
         self.assertEqual("erp-export", dataframe.loc[0, "profile_id"])
+
+    def test_save_and_filter_vendor_profile(self):
+        with tempfile.TemporaryDirectory() as directory:
+            profile = save_import_profile(
+                "Supplier Export",
+                VALID_VENDOR_MAPPING,
+                profiles_dir=Path(directory),
+                dataset_type=DatasetType.VENDORS,
+            )
+            vendor_profiles = list_import_profiles(Path(directory), dataset_type=DatasetType.VENDORS)
+            transaction_profiles = list_import_profiles(Path(directory), dataset_type=DatasetType.TRANSACTIONS)
+
+        self.assertEqual("vendors-supplier-export", profile.profile_id)
+        self.assertEqual("vendors", vendor_profiles[0].dataset_type)
+        self.assertTrue(vendor_profiles[0].complete_required_fields)
+        self.assertEqual([], transaction_profiles)
 
     def test_delete_import_profile(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -72,3 +95,9 @@ class ProfileTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "missing required"):
             validate_profile_mapping(bad_mapping)
+
+    def test_vendor_profile_validation_uses_vendor_required_fields(self):
+        bad_mapping = {"Supplier": "vendor_name"}
+
+        with self.assertRaisesRegex(ValueError, "vendor_id"):
+            validate_profile_mapping(bad_mapping, dataset_type=DatasetType.VENDORS)

@@ -1,0 +1,248 @@
+# Phase 2 Status
+
+Last updated: 2026-05-23
+
+## Branch
+
+Current branch:
+
+```text
+phase2-multi-file-audit
+```
+
+This branch is for multi-file reference reconciliation.
+
+## Current Goal
+
+Phase 2 is building multi-file audit support for NGO and small-business style audits.
+
+Current scope:
+
+- required transaction file
+- optional vendors/suppliers file
+- optional beneficiaries file
+- budget support planned, not exposed in the UI yet
+
+The current Phase 2 focus is reference reconciliation:
+
+```text
+transactions.vendor_id      -> vendors.vendor_id
+transactions.beneficiary_id -> beneficiaries.beneficiary_id
+```
+
+## What Works
+
+Rule/risk reference:
+
+- `AUDIT_RULES.md` lists current rule names, severities, reviewer actions, skipped checks, limitations, and planned next rules.
+
+### Core
+
+- `ValidationIssue` is dataset-aware:
+  - `dataset`
+  - `related_dataset`
+  - `related_record_id`
+- `AuditBundle` keeps each uploaded dataset separate.
+- `joins.py` provides normalized safe joins and source row-number preservation.
+- `joins.py` rejects input files that already contain reserved internal join columns.
+- `bundle_workflow.py` runs the combined Phase 1 validation + Phase 2 reconciliation flow outside Streamlit.
+- `reconciliation.py` checks:
+  - unknown vendor references
+  - unknown beneficiary references
+  - duplicate vendor reference keys
+  - duplicate beneficiary reference keys
+  - skipped checks for missing optional reference files
+- `bundle_cli.py` runs Phase 2 reconciliation from PowerShell.
+
+### Streamlit
+
+`app.py` now has two workflow modes:
+
+- `Single-file validation`
+- `Multi-file reconciliation`
+
+Multi-file mode currently supports:
+
+- transactions upload
+- vendors/suppliers upload
+- beneficiaries upload
+- auto-detect-first schema mapping per uploaded dataset
+- dataset-scoped import profiles
+- multi-file audit workbook download
+
+It shows:
+
+- top-level metrics
+- all issues table when issues exist
+- multi-file audit workbook download
+- mapping controls hidden unless the user asks to review them or a file needs manual mapping
+- dataset and mapping details in an expander
+- CSV downloads and detailed issue tables in an expander
+- input data previews in an expander
+
+Budget upload is intentionally not shown yet because budget reconciliation is not implemented.
+
+Multi-file mapping behavior:
+
+- Each uploaded file is auto-detected first.
+- Mapping expanders stay collapsed when required fields are found.
+- If required fields are missing, the affected dataset mapping expander opens.
+- Profiles are scoped by dataset type:
+  - transactions
+  - vendors
+  - beneficiaries
+  - budget later
+- Existing older profiles without `dataset_type` load as transaction profiles.
+- `AuditBundle` receives canonical dataframes only.
+
+Multi-file workbook sheets:
+
+- `read_me`
+- `summary`
+- `review_findings`
+- `finding_summary`
+- `dataset_summary`
+- `issue_counts`
+- `transaction_issues`
+- `reference_issues`
+- `raw_issues`
+- `skipped_checks`
+- `schema_mappings`
+- uploaded input datasets such as `transactions`, `vendors`, and `beneficiaries`
+
+Reviewer-facing output:
+
+- `review_findings` is the primary sheet for humans.
+- Findings are sorted by priority so errors appear before warnings.
+- `finding_summary` groups findings by priority and title.
+- It includes:
+  - finding ID
+  - priority
+  - review status
+  - plain-language finding title
+  - why the issue matters
+  - recommended action
+  - affected dataset/row/record evidence
+- Raw issue sheets are retained for traceability but are no longer the main review surface.
+
+## Sample Files
+
+Phase 2 sample bundle:
+
+```text
+sample_data/phase2_transactions.csv
+sample_data/phase2_vendors.csv
+sample_data/phase2_beneficiaries.csv
+```
+
+Expected sample findings:
+
+- `TXN-2005` has a zero amount transaction-validation warning
+- `VEN-404` missing from vendors
+- `BEN-404` missing from beneficiaries
+- budget check skipped because no budget file is uploaded
+
+## Commands
+
+Run all tests:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -v
+```
+
+Run Phase 2 CLI sample:
+
+```powershell
+.\.venv\Scripts\python.exe -m transaction_audit.bundle_cli `
+  --transactions sample_data\phase2_transactions.csv `
+  --vendors sample_data\phase2_vendors.csv `
+  --beneficiaries sample_data\phase2_beneficiaries.csv
+```
+
+Run Streamlit:
+
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+Then open:
+
+```text
+http://localhost:8501
+```
+
+## Current Verification
+
+Latest verified test run:
+
+```text
+Ran 50 tests
+OK
+```
+
+Latest verified CLI sample:
+
+```text
+Reference issues found: 2
+Skipped checks: 1
+```
+
+Latest verified UI import:
+
+```text
+app import ok
+```
+
+Latest verified compile check:
+
+```text
+python -m compileall app.py transaction_audit tests
+OK
+```
+
+## Important Design Decisions
+
+- Keep Phase 1 single-file validation intact.
+- Phase 2 wraps around Phase 1 rather than replacing it.
+- Keep Streamlit thin.
+- Keep datasets separate; do not merge everything into one giant dataframe early.
+- Report skipped checks explicitly instead of silently ignoring missing optional files.
+- Report duplicate keys in reference files as audit issues instead of letting pandas join errors leak to users.
+- Do not expose budget upload until budget reconciliation exists.
+
+## Next Step
+
+Current multi-file mode output:
+
+```text
+Multi-file mode output =
+  Phase 1 transaction validation issues
+  + Phase 2 reference reconciliation issues
+  + skipped checks
+  + audit workbook export
+```
+
+Next desired implementation slice:
+
+```text
+Budget reconciliation:
+  transactions.budget_line_id -> budget.budget_line_id
+  sum actual spend by budget line
+  compare against approved_amount
+  flag over-budget lines for review
+```
+
+Do not start more advanced anomaly rules before budget reconciliation is in place.
+
+## Useful Recent Commits
+
+```text
+d900ccf Make audit outputs reviewer friendly
+8bca83d Add multi-file audit workbook
+f54cded Add multi-file schema mapping
+c4e814b Harden Phase 2 reconciliation workflow
+d6fd2ac Add Phase 2 reconciliation UI mode
+f392ccf Clean up Phase 2 reconciliation loading
+15831e1 Add Phase 2 sample reconciliation CLI
+5cbcf60 Add Phase 2 reconciliation foundation
+```

@@ -45,6 +45,25 @@ class ValidationTests(unittest.TestCase):
 
         self.assertEqual(["missing_value"], issue_types)
 
+    def test_phase_one_issues_default_to_transactions_dataset(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001"],
+                "transaction_date": ["2024-03-15"],
+                "account_id": ["ACC-1"],
+                "amount": ["not-a-number"],
+                "currency": ["GBP"],
+                "counterparty": ["Vendor A"],
+            }
+        )
+
+        result = validate_transactions(dataframe)
+        issues = result.issues_dataframe()
+
+        self.assertEqual(["transactions"], issues["dataset"].tolist())
+        self.assertEqual([None], issues["related_dataset"].tolist())
+        self.assertEqual([None], issues["related_record_id"].tolist())
+
     def test_accepts_common_finance_amount_formats(self):
         dataframe = pd.DataFrame(
             {
