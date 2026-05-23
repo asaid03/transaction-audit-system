@@ -1,12 +1,111 @@
-# Transaction Testing Phase 1
+# Transaction Audit System
 
-Small Phase 1 starter for automated financial transaction testing.
+Python and Streamlit prototype for testing financial transaction files, reconciling reference data, and producing reviewer-friendly audit outputs.
 
 ## What It Does
 
-- Loads transactions from CSV or Excel files.
-- Infers common column mappings and allows schema overrides.
-- Validates required fields and basic data quality.
-- Flags duplicate transaction IDs.
-- Produces an audit-ready validation summary.
-- Provides a basic Streamlit UI for upload and review.
+- Loads transaction files from CSV or Excel.
+- Preserves raw values during ingestion so validation can report parsing issues clearly.
+- Auto-detects common column names and supports manual schema mapping.
+- Saves dataset-scoped import profiles for repeat file formats.
+- Runs single-file transaction validation checks.
+- Runs multi-file reconciliation against vendors and beneficiaries.
+- Records skipped checks when optional reference files are missing.
+- Produces reviewer-friendly audit workbooks with findings, risk levels, recommended actions, and raw evidence.
+
+## Current Workflows
+
+### Single-File Validation
+
+Use this when you only have a transaction file.
+
+Checks include:
+
+- missing required columns
+- missing required values
+- invalid amounts
+- zero or large amounts
+- invalid dates
+- unsupported currencies
+- duplicate transaction IDs
+- possible duplicate payments
+
+### Multi-File Reconciliation
+
+Use this when you have transactions plus reference files.
+
+Supported files:
+
+- transactions, required
+- vendors/suppliers, optional
+- beneficiaries, optional
+
+Checks include:
+
+- transactions referencing vendors not found in the vendor file
+- transactions referencing beneficiaries not found in the beneficiary register
+- duplicate vendor reference keys
+- duplicate beneficiary reference keys
+
+Budget reconciliation is the next planned slice and is not implemented yet.
+
+## Audit Workbook
+
+The multi-file audit workbook includes:
+
+- `read_me`
+- `summary`
+- `review_findings`
+- `finding_summary`
+- `dataset_summary`
+- `issue_counts`
+- `transaction_issues`
+- `reference_issues`
+- `raw_issues`
+- `skipped_checks`
+- `schema_mappings`
+- uploaded input datasets such as `transactions`, `vendors`, and `beneficiaries`
+
+Start with `review_findings`. It is the human-facing sheet with priority, review status, finding explanation, recommended action, and evidence.
+
+## Rules Reference
+
+See [AUDIT_RULES.md](AUDIT_RULES.md) for the current rule list, risk levels, issue types, reviewer actions, skipped checks, and planned next rules.
+
+## Run Locally
+
+Create and activate a virtual environment, then install dependencies:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Run the Streamlit app:
+
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+Run tests:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -v
+```
+
+Run the Phase 2 sample CLI:
+
+```powershell
+.\.venv\Scripts\python.exe -m transaction_audit.bundle_cli `
+  --transactions sample_data\phase2_transactions.csv `
+  --vendors sample_data\phase2_vendors.csv `
+  --beneficiaries sample_data\phase2_beneficiaries.csv
+```
+
+## Design Principles
+
+- Keep Streamlit as a UI adapter.
+- Keep validation and reconciliation as pure Python dataframe logic.
+- Prefer deterministic, explainable rules before ML or AI.
+- Avoid silently dropping bad data; return audit issues or skipped checks.
+- Keep uploaded datasets separate until a specific reconciliation rule needs a join.
