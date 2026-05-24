@@ -101,6 +101,43 @@ class ValidationTests(unittest.TestCase):
         self.assertNotIn("invalid_date", issue_types)
         self.assertEqual(["2026-04-08", "2026-04-08", "2026-04-08", "2026-04-08"], parsed_dates)
 
+    def test_accepts_inline_currency_and_european_amount_formats(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001", "TXN-002", "TXN-003"],
+                "transaction_date": ["2024-03-15", "2024-03-16", "2024-03-17"],
+                "account_id": ["ACC-1", "ACC-2", "ACC-3"],
+                "amount": ["GBP 1,500.25", "USD 450", "1.250,00"],
+                "currency": ["GBP", "USD", "EUR"],
+                "counterparty": ["Vendor A", "Vendor B", "Vendor C"],
+            }
+        )
+
+        result = validate_transactions(dataframe)
+        issue_types = result.issues_dataframe()["issue_type"].tolist()
+
+        self.assertNotIn("invalid_amount", issue_types)
+        self.assertEqual([1500.25, 450.00, 1250.00], result.transactions["amount"].tolist())
+
+    def test_parses_common_bank_statement_date_formats(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001", "TXN-002", "TXN-003"],
+                "transaction_date": ["01-May-26", "1-May-2026", "31-May-26"],
+                "account_id": ["ACC-1", "ACC-2", "ACC-3"],
+                "amount": ["10", "20", "30"],
+                "currency": ["GBP", "GBP", "GBP"],
+                "counterparty": ["Vendor A", "Vendor B", "Vendor C"],
+            }
+        )
+
+        result = validate_transactions(dataframe)
+        issue_types = result.issues_dataframe()["issue_type"].tolist()
+        parsed_dates = result.transactions["transaction_date"].dt.strftime("%Y-%m-%d").tolist()
+
+        self.assertNotIn("invalid_date", issue_types)
+        self.assertEqual(["2026-05-01", "2026-05-01", "2026-05-31"], parsed_dates)
+
     def test_row_numbers_are_position_based_not_index_based(self):
         dataframe = pd.DataFrame(
             {

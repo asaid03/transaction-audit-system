@@ -27,3 +27,14 @@ class IngestionTests(unittest.TestCase):
         dataframe = load_transactions(source, filename="transactions.csv")
 
         self.assertEqual("TXN-001", dataframe.loc[0, "transaction_id"])
+
+    def test_ragged_csv_falls_back_to_raw_rows(self):
+        source = io.StringIO(
+            "SALAAM BANK EXPORT\n"
+            "Ref No,Value Date,Debit,Credit,Balance,Narration\n"
+            "TXN-001,01-May-26,10,,990,Payment\n"
+        )
+
+        dataframe = load_dataset(source, filename="transactions.csv")
+
+        self.assertIn("Ref No", dataframe.iloc[0].tolist())

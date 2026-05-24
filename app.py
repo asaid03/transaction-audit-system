@@ -10,6 +10,7 @@ from transaction_audit.audit import (
     summary_dataframe,
 )
 from transaction_audit.bundle_workflow import run_bundle_audit
+from transaction_audit.cleaning import CleaningResult, clean_transaction_export
 from transaction_audit.config import REQUIRED_COLUMNS
 from transaction_audit.datasets import AuditBundle, AuditDataset, DATASET_DEFINITIONS, DatasetType
 from transaction_audit.ingestion import load_dataset, load_transactions
@@ -57,6 +58,8 @@ def main() -> None:
 
     try:
         raw_transactions = load_transactions(uploaded_file, filename=uploaded_file.name)
+        raw_transactions, cleaning_result = maybe_clean_transactions(raw_transactions)
+        render_cleaning_notice(cleaning_result)
         auto_mapping_plan = build_mapping_plan(raw_transactions)
 
         column_options = [""] + [str(column) for column in raw_transactions.columns]
@@ -216,6 +219,10 @@ def render_multi_file_reconciliation(profiles) -> None:
                 continue
 
             raw_dataframe = load_dataset(uploaded_file, filename=uploaded_file.name)
+            cleaning_result = None
+            if dataset_type == DatasetType.TRANSACTIONS:
+                raw_dataframe, cleaning_result = maybe_clean_transactions(raw_dataframe)
+                render_cleaning_notice(cleaning_result)
             schema_result, selected_profile = resolve_dataset_mapping(dataset_type, raw_dataframe, profiles)
 
             if adjust_mappings or not schema_result.has_required_schema:
@@ -411,6 +418,43 @@ def render_dataset_mapping(
                 st.rerun()
 
     return schema_result, selected_profile
+
+
+def maybe_clean_transactions(dataframe: pd.DataFrame) -> tuple[pd.DataFrame, CleaningResult | None]:
+    if build_mapping_plan(dataframe, dataset_type=DatasetType.TRANSACTIONS).auto_schema.has_required_schema:
+        return dataframe, None
+
+    cleaning_result = clean_transaction_export(dataframe)
+    if not cleaning_result.applied:
+        return dataframe, cleaning_result
+
+    cleaned_plan = build_mapping_plan(cleaning_result.dataframe, dataset_type=DatasetType.TRANSACTIONS)
+    if cleaned_plan.auto_schema.has_required_schema:
+        return cleaning_result.dataframe, cleaning_result
+
+    return dataframe, cleaning_result
+
+
+def render_cleaning_notice(cleaning_result: CleaningResult | None) -> None:
+    if cleaning_result is None:
+        return
+
+    if cleaning_result.applied:
+        st.info("Bank-style export cleanup was applied before schema mapping.")
+        with st.expander("Cleaning details"):
+            if cleaning_result.transformations:
+                st.write("Transformations")
+                st.dataframe(pd.DataFrame({"transformation": cleaning_result.transformations}), use_container_width=True)
+            if cleaning_result.dropped_rows:
+                st.write("Dropped source rows")
+                st.dataframe(pd.DataFrame({"source_row_number": cleaning_result.dropped_rows}), use_container_width=True)
+            if cleaning_result.warnings:
+                st.write("Warnings")
+                st.dataframe(pd.DataFrame({"warning": cleaning_result.warnings}), use_container_width=True)
+        return
+
+    if cleaning_result.warnings:
+        st.caption("Cleaning not applied: " + "; ".join(cleaning_result.warnings))
 
 
 def best_matching_profile(raw_dataframe, dataset_type: DatasetType, profiles):

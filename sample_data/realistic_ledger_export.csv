@@ -1,0 +1,10 @@
+NGO FINANCE LEDGER EXPORT,,,,,
+Project: Emergency Cash Transfer,,,,,
+Currency: USD,,,,,
+,,,,,
+Date,Description,Amount,Currency,Account
+1-May-2026,Payment to Somali Medical Supplies - INV 2026-04,"USD 1,250.00",USD,FIELD-OPS
+02-May-26,Refund from supplier - INV 2026-02,(USD 75.00),USD,FIELD-OPS
+31-May-26,Month end bank charge,USD 300,USD,OPERATIONS
+,,,,,
+Grand Total,,USD 1,475.00,,
