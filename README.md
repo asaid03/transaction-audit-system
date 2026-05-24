@@ -10,6 +10,7 @@ Python and Streamlit prototype for testing financial transaction files, reconcil
 - Saves dataset-scoped import profiles for repeat file formats.
 - Runs single-file transaction validation checks.
 - Runs multi-file reconciliation against vendors and beneficiaries.
+- Suggests possible vendor matches when exact vendor matching fails but a high-confidence fuzzy name match exists.
 - Records skipped checks when optional reference files are missing.
 - Produces reviewer-friendly audit workbooks with findings, risk levels, recommended actions, and raw evidence.
 
@@ -43,6 +44,7 @@ Supported files:
 Checks include:
 
 - transactions referencing vendors not found in the vendor file
+- possible vendor matches that need human review
 - transactions referencing beneficiaries not found in the beneficiary register
 - duplicate vendor reference keys
 - duplicate beneficiary reference keys

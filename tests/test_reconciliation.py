@@ -42,6 +42,54 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual(["unknown_vendor_reference"], issues["issue_type"].tolist())
         self.assertEqual(["Missing Vendor"], issues["related_record_id"].tolist())
 
+    def test_vendor_reference_fuzzy_match_is_review_warning(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001"],
+                "vendor_id": ["VEN-404"],
+                "counterparty": ["Hormuud Telecom"],
+            },
+        )
+        vendors = _dataset(
+            DatasetType.VENDORS,
+            {
+                "vendor_id": ["VEN-001"],
+                "vendor_name": ["HORMUUD TELECOM LTD"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, vendors=vendors))
+        issues = result.issues_dataframe()
+
+        self.assertEqual(["possible_vendor_match"], issues["issue_type"].tolist())
+        self.assertEqual(["warning"], issues["severity"].tolist())
+        self.assertEqual(["VEN-001"], issues["related_record_id"].tolist())
+        self.assertIn("Possible vendor match", issues.loc[0, "message"])
+
+    def test_vendor_reference_without_fuzzy_match_remains_unknown(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001"],
+                "vendor_id": ["VEN-404"],
+                "counterparty": ["Unrelated Supplier"],
+            },
+        )
+        vendors = _dataset(
+            DatasetType.VENDORS,
+            {
+                "vendor_id": ["VEN-001"],
+                "vendor_name": ["HORMUUD TELECOM LTD"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, vendors=vendors))
+        issues = result.issues_dataframe()
+
+        self.assertEqual(["unknown_vendor_reference"], issues["issue_type"].tolist())
+        self.assertEqual(["error"], issues["severity"].tolist())
+
     def test_duplicate_vendor_references_are_reported_as_audit_issues(self):
         transactions = _dataset(
             DatasetType.TRANSACTIONS,

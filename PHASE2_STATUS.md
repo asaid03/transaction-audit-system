@@ -1,6 +1,6 @@
 # Phase 2 Status
 
-Last updated: 2026-05-23
+Last updated: 2026-05-24
 
 ## Status
 
@@ -16,6 +16,7 @@ Phase 2 turned the project from a single-file transaction validator into a multi
 - Auto-detect-first schema mapping per uploaded dataset.
 - Dataset-scoped import profiles.
 - Vendor and beneficiary reference reconciliation.
+- Conservative fuzzy vendor-name fallback for unmatched vendor references.
 - Duplicate vendor and beneficiary key checks.
 - Explicit skipped-check reporting.
 - Multi-file Streamlit workflow.
@@ -34,6 +35,7 @@ transactions.beneficiary_id -> beneficiaries.beneficiary_id
 Current reconciliation findings:
 
 - unknown vendor reference
+- possible vendor match
 - unknown beneficiary reference
 - duplicate vendor reference
 - duplicate beneficiary reference
@@ -87,10 +89,10 @@ Multi-file workbook sheets:
 
 ## Verification
 
-Latest verified state before merge to `main`:
+Latest verified state:
 
 ```text
-Ran 50 tests
+Ran 52 tests
 OK
 ```
 

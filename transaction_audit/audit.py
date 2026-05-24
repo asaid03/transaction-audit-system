@@ -37,6 +37,11 @@ ISSUE_GUIDANCE = {
         "why_it_matters": "The transaction points to a vendor that was not found in the uploaded vendor file.",
         "recommended_action": "Confirm whether the vendor should be added to the approved vendor list or investigate the payment.",
     },
+    "possible_vendor_match": {
+        "finding": "Payment has a possible vendor match",
+        "why_it_matters": "The transaction did not match the vendor file exactly, but a similar vendor name was found.",
+        "recommended_action": "Review the suggested vendor match and confirm whether the transaction should be linked to that vendor.",
+    },
     "unknown_beneficiary_reference": {
         "finding": "Payment references an unknown beneficiary",
         "why_it_matters": "The transaction points to a beneficiary that was not found in the uploaded beneficiary register.",

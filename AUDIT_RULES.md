@@ -36,6 +36,7 @@ These checks run when reference files are uploaded with transactions.
 | Rule | Issue type | Severity | What it detects | Reviewer action |
 | --- | --- | --- | --- | --- |
 | Unknown vendor reference | `unknown_vendor_reference` | error | Transaction references a vendor missing from the vendor file. | Confirm whether the vendor should be approved or investigate the payment. |
+| Possible vendor match | `possible_vendor_match` | warning | Exact vendor match failed, but a similar vendor name was found above the confidence threshold. | Review the suggested match and confirm whether the transaction should be linked to that vendor. |
 | Duplicate vendor key | `duplicate_vendor_reference` | error | Vendor file has duplicate vendor IDs or duplicate matched vendor keys. | Correct or merge duplicate vendor master records. |
 | Unknown beneficiary reference | `unknown_beneficiary_reference` | error | Transaction references a beneficiary missing from the beneficiary register. | Confirm beneficiary identity before approving payment. |
 | Duplicate beneficiary key | `duplicate_beneficiary_reference` | error | Beneficiary file has duplicate beneficiary IDs. | Correct duplicate beneficiary records and check for overpayment risk. |
@@ -57,6 +58,7 @@ The system currently answers:
 - whether transaction data is usable,
 - whether common transaction quality issues exist,
 - whether vendors and beneficiaries referenced by transactions exist in uploaded reference files,
+- whether unmatched vendor references have a likely fuzzy name match that needs review,
 - whether reference files contain duplicate keys.
 
 It does not yet answer whether spending is reasonable against an approved budget. That belongs to the next planned slice: budget reconciliation.
