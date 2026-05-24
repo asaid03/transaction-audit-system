@@ -72,6 +72,10 @@ Start with `review_findings`. It is the human-facing sheet with priority, review
 
 See [AUDIT_RULES.md](AUDIT_RULES.md) for the current rule list, risk levels, issue types, reviewer actions, skipped checks, and planned next rules.
 
+## AI Agent Guidance
+
+See [AGENTS.md](AGENTS.md) for repo-specific instructions for Codex, Claude, Cursor, and other coding agents. It captures the project rules around simplicity, surgical changes, testing, audit explainability, and the Phase 3 roadmap.
+
 ## Run Locally
 
 Create and activate a virtual environment, then install dependencies:
