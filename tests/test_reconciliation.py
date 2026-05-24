@@ -188,6 +188,29 @@ class ReconciliationTests(unittest.TestCase):
         self.assertIn("250.00", overpaid["message"])
         self.assertIn("200.00", overpaid["message"])
 
+    def test_beneficiary_entitlement_matches_normalized_ids(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001"],
+                "beneficiary_id": [" ben-001 "],
+                "amount": ["150"],
+            },
+        )
+        beneficiaries = _dataset(
+            DatasetType.BENEFICIARIES,
+            {
+                "beneficiary_id": ["BEN-001"],
+                "beneficiary_name": ["Beneficiary One"],
+                "expected_amount": ["100"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, beneficiaries=beneficiaries))
+        issues = result.issues_dataframe()
+
+        self.assertIn("beneficiary_overpaid", issues["issue_type"].tolist())
+
     def test_beneficiary_entitlement_is_skipped_without_expected_amount(self):
         transactions = _dataset(
             DatasetType.TRANSACTIONS,
@@ -261,6 +284,31 @@ class ReconciliationTests(unittest.TestCase):
         unknown = issues[issues["issue_type"].eq("unknown_budget_line")].iloc[0]
         self.assertEqual("TXN-003", unknown["transaction_id"])
         self.assertEqual(4, unknown["row_number"])
+
+    def test_budget_reconciliation_matches_normalized_budget_keys(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001"],
+                "budget_line_id": [" bl-cash "],
+                "amount": ["250"],
+            },
+        )
+        budget = _dataset(
+            DatasetType.BUDGET,
+            {
+                "budget_line_id": ["BL-CASH"],
+                "budget_name": ["Cash assistance"],
+                "approved_amount": ["200"],
+                "currency": ["USD"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, budget=budget))
+        issues = result.issues_dataframe()
+
+        self.assertIn("budget_line_overspent", issues["issue_type"].tolist())
+        self.assertNotIn("unknown_budget_line", issues["issue_type"].tolist())
 
     def test_budget_reconciliation_skips_without_budget_line(self):
         transactions = _dataset(

@@ -226,23 +226,39 @@ def check_beneficiary_entitlements(
         return ReconciliationResult(issues=[], skipped_checks=[])
 
     valid_transactions["_amount_numeric"] = transaction_amounts.loc[valid_transactions.index]
+    valid_transactions["_beneficiary_join_key"] = normalize_join_key(valid_transactions["beneficiary_id"])
+    valid_transactions = valid_transactions[valid_transactions["_beneficiary_join_key"].notna()].copy()
+    if valid_transactions.empty:
+        return ReconciliationResult(issues=[], skipped_checks=[])
+
     actual_by_beneficiary = (
-        valid_transactions.groupby("beneficiary_id", dropna=False)["_amount_numeric"]
-        .sum()
-        .reset_index(name="actual_amount")
+        valid_transactions.groupby("_beneficiary_join_key", dropna=False)
+        .agg(
+            actual_amount=("_amount_numeric", "sum"),
+            beneficiary_id=("beneficiary_id", "first"),
+        )
+        .reset_index()
     )
 
     beneficiaries_for_entitlement = deduplicate_reference_rows(beneficiaries.dataframe, "beneficiary_id")
     expected = beneficiaries_for_entitlement[["beneficiary_id", "expected_amount"]].copy()
     expected["_expected_amount_numeric"] = parse_amounts(expected["expected_amount"])
+    expected["_beneficiary_join_key"] = normalize_join_key(expected["beneficiary_id"])
     expected = expected[
         expected["beneficiary_id"].astype(str).str.strip().ne("")
+        & expected["_beneficiary_join_key"].notna()
         & expected["_expected_amount_numeric"].notna()
     ].copy()
     if expected.empty:
         return ReconciliationResult(issues=[], skipped_checks=[])
 
-    joined = actual_by_beneficiary.merge(expected, how="inner", on="beneficiary_id", validate="many_to_one")
+    joined = actual_by_beneficiary.merge(
+        expected,
+        how="inner",
+        on="_beneficiary_join_key",
+        suffixes=("_transaction", "_beneficiary"),
+        validate="many_to_one",
+    )
     overpaid = joined[joined["actual_amount"].gt(joined["_expected_amount_numeric"])]
 
     issues = [
@@ -254,9 +270,9 @@ def check_beneficiary_entitlements(
             issue_type="beneficiary_overpaid",
             severity="error",
             related_dataset="beneficiaries",
-            related_record_id=_clean_optional(row["beneficiary_id"]),
+            related_record_id=_clean_optional(row["beneficiary_id_beneficiary"]),
             message=(
-                f"Beneficiary '{row['beneficiary_id']}' received "
+                f"Beneficiary '{row['beneficiary_id_transaction']}' received "
                 f"{row['actual_amount']:,.2f}, above expected amount "
                 f"{row['_expected_amount_numeric']:,.2f}."
             ),
@@ -314,9 +330,13 @@ def check_budget_reconciliation(
 
     issues: list[ValidationIssue] = []
     if not valid_transactions.empty and not valid_budget.empty:
-        valid_budget_keys = set(normalize_join_key(valid_budget[budget_field]).dropna())
-        transaction_keys = normalize_join_key(valid_transactions[transaction_field])
-        unknown_transactions = valid_transactions[~transaction_keys.isin(valid_budget_keys)]
+        valid_transactions["_budget_join_key"] = normalize_join_key(valid_transactions[transaction_field])
+        valid_transactions = valid_transactions[valid_transactions["_budget_join_key"].notna()].copy()
+        valid_budget["_budget_join_key"] = normalize_join_key(valid_budget[budget_field])
+        valid_budget = valid_budget[valid_budget["_budget_join_key"].notna()].copy()
+
+        valid_budget_keys = set(valid_budget["_budget_join_key"].dropna())
+        unknown_transactions = valid_transactions[~valid_transactions["_budget_join_key"].isin(valid_budget_keys)]
         issues.extend(
             _reference_issue(
                 row=row,
@@ -330,15 +350,17 @@ def check_budget_reconciliation(
         )
 
         spend_by_line = (
-            valid_transactions.groupby(transaction_field, dropna=False)["_amount_numeric"]
-            .sum()
-            .reset_index(name="actual_amount")
+            valid_transactions.groupby("_budget_join_key", dropna=False)
+            .agg(
+                actual_amount=("_amount_numeric", "sum"),
+                budget_reference=(transaction_field, "first"),
+            )
+            .reset_index()
         )
         joined = spend_by_line.merge(
             valid_budget,
             how="left",
-            left_on=transaction_field,
-            right_on=budget_field,
+            on="_budget_join_key",
             validate="many_to_one",
         )
 
@@ -355,9 +377,9 @@ def check_budget_reconciliation(
                 issue_type="budget_line_overspent",
                 severity="error",
                 related_dataset="budget",
-                related_record_id=_clean_optional(row[transaction_field]),
+                related_record_id=_clean_optional(row["budget_reference"]),
                 message=(
-                    f"Budget line '{row[transaction_field]}' actual spend "
+                    f"Budget line '{row['budget_reference']}' actual spend "
                     f"{row['actual_amount']:,.2f} exceeds approved amount "
                     f"{row['_approved_amount_numeric']:,.2f}."
                 ),
