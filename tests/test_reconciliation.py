@@ -161,6 +161,155 @@ class ReconciliationTests(unittest.TestCase):
         )
         self.assertEqual(["beneficiaries", "beneficiaries"], issues["dataset"].tolist())
 
+    def test_beneficiary_overpayment_is_reported_against_expected_amount(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "beneficiary_id": ["BEN-001", "BEN-001"],
+                "amount": ["150", "100"],
+            },
+        )
+        beneficiaries = _dataset(
+            DatasetType.BENEFICIARIES,
+            {
+                "beneficiary_id": ["BEN-001"],
+                "beneficiary_name": ["Beneficiary One"],
+                "expected_amount": ["200"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, beneficiaries=beneficiaries))
+        issues = result.issues_dataframe()
+
+        self.assertIn("beneficiary_overpaid", issues["issue_type"].tolist())
+        overpaid = issues[issues["issue_type"].eq("beneficiary_overpaid")].iloc[0]
+        self.assertEqual("BEN-001", overpaid["related_record_id"])
+        self.assertIn("250.00", overpaid["message"])
+        self.assertIn("200.00", overpaid["message"])
+
+    def test_beneficiary_entitlement_is_skipped_without_expected_amount(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001"],
+                "beneficiary_id": ["BEN-001"],
+                "amount": ["150"],
+            },
+        )
+        beneficiaries = _dataset(
+            DatasetType.BENEFICIARIES,
+            {
+                "beneficiary_id": ["BEN-001"],
+                "beneficiary_name": ["Beneficiary One"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, beneficiaries=beneficiaries))
+        skipped = result.skipped_checks_dataframe()
+
+        self.assertIn("beneficiary_entitlement", skipped["check_name"].tolist())
+
+    def test_beneficiary_entitlement_tolerates_duplicate_reference_rows(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001"],
+                "beneficiary_id": ["BEN-001"],
+                "amount": ["150"],
+            },
+        )
+        beneficiaries = _dataset(
+            DatasetType.BENEFICIARIES,
+            {
+                "beneficiary_id": ["BEN-001", "ben-001"],
+                "beneficiary_name": ["Beneficiary One", "Beneficiary One Duplicate"],
+                "expected_amount": ["100", "100"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, beneficiaries=beneficiaries))
+        issues = result.issues_dataframe()
+
+        self.assertIn("duplicate_beneficiary_reference", issues["issue_type"].tolist())
+        self.assertIn("beneficiary_overpaid", issues["issue_type"].tolist())
+
+    def test_budget_reconciliation_flags_overspend_and_unknown_budget_line(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001", "TXN-002", "TXN-003"],
+                "budget_line_id": ["BL-FOOD", "BL-FOOD", "BL-UNKNOWN"],
+                "amount": ["600", "500", "50"],
+            },
+        )
+        budget = _dataset(
+            DatasetType.BUDGET,
+            {
+                "budget_line_id": ["BL-FOOD"],
+                "budget_name": ["Food assistance"],
+                "approved_amount": ["1,000"],
+                "currency": ["USD"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, budget=budget))
+        issues = result.issues_dataframe()
+
+        self.assertIn("budget_line_overspent", issues["issue_type"].tolist())
+        self.assertIn("unknown_budget_line", issues["issue_type"].tolist())
+        unknown = issues[issues["issue_type"].eq("unknown_budget_line")].iloc[0]
+        self.assertEqual("TXN-003", unknown["transaction_id"])
+        self.assertEqual(4, unknown["row_number"])
+
+    def test_budget_reconciliation_skips_without_budget_line(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001"],
+                "amount": ["100"],
+            },
+        )
+        budget = _dataset(
+            DatasetType.BUDGET,
+            {
+                "budget_line_id": ["BL-FOOD"],
+                "budget_name": ["Food assistance"],
+                "approved_amount": ["1,000"],
+                "currency": ["USD"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, budget=budget))
+        skipped = result.skipped_checks_dataframe()
+
+        self.assertIn("transaction_budget_reference", skipped["check_name"].tolist())
+
+    def test_budget_reconciliation_tolerates_duplicate_reference_rows(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001"],
+                "budget_line_id": ["BL-FOOD"],
+                "amount": ["1,100"],
+            },
+        )
+        budget = _dataset(
+            DatasetType.BUDGET,
+            {
+                "budget_line_id": ["BL-FOOD", "bl-food"],
+                "budget_name": ["Food assistance", "Food duplicate"],
+                "approved_amount": ["1,000", "1,000"],
+                "currency": ["USD", "USD"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, budget=budget))
+        issues = result.issues_dataframe()
+
+        self.assertIn("duplicate_budget_reference", issues["issue_type"].tolist())
+        self.assertIn("budget_line_overspent", issues["issue_type"].tolist())
+
     def test_reports_skipped_checks_for_missing_optional_files(self):
         transactions = _dataset(DatasetType.TRANSACTIONS, {"transaction_id": ["TXN-001"]})
 

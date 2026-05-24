@@ -67,6 +67,11 @@ DEFAULT_COLUMN_ALIASES = {
     "budget line id": "budget_line_id",
     "budget_code": "budget_line_id",
     "budget code": "budget_line_id",
+    "budget_category": "budget_category",
+    "budget category": "budget_category",
+    "category": "budget_category",
+    "spend_category": "budget_category",
+    "spend category": "budget_category",
 }
 
 VENDOR_COLUMN_ALIASES = {

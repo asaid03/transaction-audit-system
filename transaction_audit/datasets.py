@@ -32,6 +32,7 @@ DATASET_DEFINITIONS = {
             "beneficiary_id",
             "budget_line_id",
             "account_id",
+            "budget_category",
             "description",
         ),
     ),

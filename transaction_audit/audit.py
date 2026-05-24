@@ -57,6 +57,26 @@ ISSUE_GUIDANCE = {
         "why_it_matters": "Duplicate beneficiary keys can hide overpayments or misdirected cash transfers.",
         "recommended_action": "Review the beneficiary register and confirm which record is valid.",
     },
+    "beneficiary_overpaid": {
+        "finding": "Beneficiary received more than expected",
+        "why_it_matters": "Payments to this beneficiary exceed the expected amount in the beneficiary register.",
+        "recommended_action": "Confirm entitlement, supporting approvals, and whether the excess payment should be recovered or explained.",
+    },
+    "unknown_budget_line": {
+        "finding": "Transaction references an unknown budget line",
+        "why_it_matters": "Spend is coded to a budget line that was not found in the uploaded budget file.",
+        "recommended_action": "Confirm the correct budget line or update the approved budget file before relying on budget results.",
+    },
+    "budget_line_overspent": {
+        "finding": "Budget line is overspent",
+        "why_it_matters": "Actual spend exceeds the approved amount for this budget line.",
+        "recommended_action": "Review donor approval, budget amendments, and supporting documents for the overspend.",
+    },
+    "duplicate_budget_reference": {
+        "finding": "Duplicate budget reference",
+        "why_it_matters": "Duplicate budget keys can cause spend to compare against the wrong approved amount.",
+        "recommended_action": "Review the budget file and keep one authoritative row per budget reference.",
+    },
     "duplicate_transaction_id": {
         "finding": "Duplicate transaction ID",
         "why_it_matters": "The same transaction identifier appears more than once.",
@@ -181,11 +201,11 @@ def review_findings_dataframe(issues: pd.DataFrame) -> pd.DataFrame:
                 "why_it_matters": guidance["why_it_matters"],
                 "recommended_action": guidance["recommended_action"],
                 "dataset": issue["dataset"],
-                "row_number": issue["row_number"],
-                "transaction_id": issue["transaction_id"],
+                "row_number": _display_value(issue["row_number"]),
+                "transaction_id": _display_value(issue["transaction_id"]),
                 "field": issue["field"],
-                "related_dataset": issue["related_dataset"],
-                "related_record_id": issue["related_record_id"],
+                "related_dataset": _display_value(issue["related_dataset"]),
+                "related_record_id": _display_value(issue["related_record_id"]),
                 "evidence": issue["message"],
                 "technical_issue_type": issue["issue_type"],
                 "review_notes": "",
@@ -215,6 +235,12 @@ def priority_for_severity(severity: object) -> str:
     if str(severity).lower() == "warning":
         return "Medium"
     return "Low"
+
+
+def _display_value(value: object) -> object:
+    if pd.isna(value):
+        return ""
+    return value
 
 
 def audit_readme_dataframe() -> pd.DataFrame:

@@ -17,6 +17,8 @@ Phase 2 turned the project from a single-file transaction validator into a multi
 - Dataset-scoped import profiles.
 - Vendor and beneficiary reference reconciliation.
 - Conservative fuzzy vendor-name fallback for unmatched vendor references.
+- Beneficiary entitlement check using `expected_amount`.
+- Budget reconciliation using budget line/category actuals vs approved amounts.
 - Duplicate vendor and beneficiary key checks.
 - Explicit skipped-check reporting.
 - Multi-file Streamlit workflow.
@@ -37,6 +39,10 @@ Current reconciliation findings:
 - unknown vendor reference
 - possible vendor match
 - unknown beneficiary reference
+- beneficiary overpaid
+- unknown budget line
+- budget line overspent
+- duplicate budget reference
 - duplicate vendor reference
 - duplicate beneficiary reference
 - skipped optional checks
@@ -92,7 +98,7 @@ Multi-file workbook sheets:
 Latest verified state:
 
 ```text
-Ran 52 tests
+Ran 58 tests
 OK
 ```
 
@@ -108,13 +114,12 @@ OK
 
 ## Next Phase
 
-The next planned slice is budget reconciliation:
+Budget reconciliation and beneficiary entitlement checks are now implemented.
 
-```text
-transactions.budget_line_id -> budget.budget_line_id
-sum actual spend by budget line
-compare against approved_amount
-flag over-budget lines for review
-```
+The next planned slice is spending-pattern anomaly checks:
 
-Do not start more advanced anomaly rules before budget reconciliation is in place.
+- vendor concentration
+- threshold structuring
+- unusual timing such as weekend, month-end, or project-closeout clusters
+
+Do not add ML or opaque risk scoring before deterministic anomaly rules are stable.

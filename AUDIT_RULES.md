@@ -40,6 +40,10 @@ These checks run when reference files are uploaded with transactions.
 | Duplicate vendor key | `duplicate_vendor_reference` | error | Vendor file has duplicate vendor IDs or duplicate matched vendor keys. | Correct or merge duplicate vendor master records. |
 | Unknown beneficiary reference | `unknown_beneficiary_reference` | error | Transaction references a beneficiary missing from the beneficiary register. | Confirm beneficiary identity before approving payment. |
 | Duplicate beneficiary key | `duplicate_beneficiary_reference` | error | Beneficiary file has duplicate beneficiary IDs. | Correct duplicate beneficiary records and check for overpayment risk. |
+| Beneficiary overpayment | `beneficiary_overpaid` | error | Total payments to a beneficiary exceed `expected_amount` in the beneficiary register. | Confirm entitlement, approvals, and whether the excess payment should be recovered or explained. |
+| Unknown budget line | `unknown_budget_line` | error | Transactions reference a budget line/category missing from the budget file. | Confirm the correct budget line or update the approved budget file. |
+| Budget overspend | `budget_line_overspent` | error | Actual spend for a budget line exceeds `approved_amount`. | Review donor approval, budget amendments, and support for the overspend. |
+| Duplicate budget key | `duplicate_budget_reference` | error | Budget file has duplicate budget line/category references. | Keep one authoritative row per budget reference. |
 
 ## Skipped Checks
 
@@ -49,7 +53,7 @@ Skipped checks are not findings. They tell reviewers which optional checks did n
 | --- | --- | --- |
 | Vendor reconciliation | Vendors file not uploaded or no usable vendor columns found. | Vendor reference assurance is incomplete. |
 | Beneficiary reconciliation | Beneficiary file not uploaded or `beneficiary_id` is missing. | Beneficiary reference assurance is incomplete. |
-| Budget reconciliation | Budget file not uploaded or budget logic not implemented yet. | Budget-vs-actual assurance is not available yet. |
+| Budget reconciliation | Budget file not uploaded, no usable budget line/category exists, or approved amounts are missing. | Budget-vs-actual assurance is incomplete. |
 
 ## Current Scope Limitations
 
@@ -60,15 +64,15 @@ The system currently answers:
 - whether vendors and beneficiaries referenced by transactions exist in uploaded reference files,
 - whether unmatched vendor references have a likely fuzzy name match that needs review,
 - whether reference files contain duplicate keys.
+- whether beneficiaries received more than expected.
+- whether spend exceeds approved budget lines.
 
-It does not yet answer whether spending is reasonable against an approved budget. That belongs to the next planned slice: budget reconciliation.
+It does not yet perform vendor concentration, threshold structuring, or timing anomaly analysis.
 
 ## Planned Next Rules
 
 | Planned rule | Risk question |
 | --- | --- |
-| Budget vs actual | Did spending exceed approved budget lines? |
-| Beneficiary entitlement | Did beneficiaries receive the expected amount? |
 | Vendor concentration | Is too much spend going to one vendor? |
 | Threshold structuring | Are payments clustered just below review thresholds? |
 | Timing anomalies | Are payments clustered around weekends, month-end, or project closeout? |

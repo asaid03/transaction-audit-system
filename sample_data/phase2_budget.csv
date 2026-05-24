@@ -1,0 +1,4 @@
+budget_line_id,budget_name,approved_amount,currency,category,donor
+BL-HEALTH,Health supplies,500.00,USD,Health,Donor A
+BL-CASH,Cash transfers,200.00,USD,Cash assistance,Donor A
+BL-LOGISTICS,Logistics,100.00,USD,Operations,Donor A

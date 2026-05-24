@@ -12,11 +12,13 @@ def build_bundle_from_paths(
     transactions_path: Path,
     vendors_path: Path | None = None,
     beneficiaries_path: Path | None = None,
+    budget_path: Path | None = None,
 ) -> AuditBundle:
     return AuditBundle(
         transactions=_load_dataset(DatasetType.TRANSACTIONS, transactions_path),
         vendors=_load_optional_dataset(DatasetType.VENDORS, vendors_path),
         beneficiaries=_load_optional_dataset(DatasetType.BENEFICIARIES, beneficiaries_path),
+        budget=_load_optional_dataset(DatasetType.BUDGET, budget_path),
     )
 
 
@@ -39,12 +41,14 @@ def main() -> None:
     parser.add_argument("--transactions", required=True, type=Path)
     parser.add_argument("--vendors", type=Path)
     parser.add_argument("--beneficiaries", type=Path)
+    parser.add_argument("--budget", type=Path)
     args = parser.parse_args()
 
     bundle = build_bundle_from_paths(
         transactions_path=args.transactions,
         vendors_path=args.vendors,
         beneficiaries_path=args.beneficiaries,
+        budget_path=args.budget,
     )
     result = reconcile_bundle(bundle)
     issues = result.issues_dataframe()

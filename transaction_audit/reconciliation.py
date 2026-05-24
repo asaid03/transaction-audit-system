@@ -7,7 +7,14 @@ import pandas as pd
 from rapidfuzz import fuzz, process
 
 from transaction_audit.datasets import AuditBundle, AuditDataset
-from transaction_audit.joins import AUDIT_ROW_NUMBER, normalize_join_key, safe_left_join, unmatched_left_rows, with_audit_row_numbers
+from transaction_audit.joins import (
+    AUDIT_ROW_NUMBER,
+    normalize_join_key,
+    safe_left_join,
+    unmatched_left_rows,
+    with_audit_row_numbers,
+)
+from transaction_audit.parsing import parse_amounts
 from transaction_audit.types import ISSUE_COLUMNS, ValidationIssue
 
 
@@ -79,6 +86,12 @@ def reconcile_bundle(bundle: AuditBundle) -> ReconciliationResult:
         )
         issues.extend(beneficiary_result.issues)
         skipped_checks.extend(beneficiary_result.skipped_checks)
+        entitlement_result = check_beneficiary_entitlements(
+            bundle.transactions,
+            bundle.beneficiaries,
+        )
+        issues.extend(entitlement_result.issues)
+        skipped_checks.extend(entitlement_result.skipped_checks)
 
     if bundle.budget is None:
         skipped_checks.append(
@@ -89,13 +102,9 @@ def reconcile_bundle(bundle: AuditBundle) -> ReconciliationResult:
             )
         )
     else:
-        skipped_checks.append(
-            SkippedCheck(
-                check_name="transaction_budget_reference",
-                dataset="budget",
-                reason="Budget reconciliation is planned but not implemented yet.",
-            )
-        )
+        budget_result = check_budget_reconciliation(bundle.transactions, bundle.budget)
+        issues.extend(budget_result.issues)
+        skipped_checks.extend(budget_result.skipped_checks)
 
     return ReconciliationResult(issues=issues, skipped_checks=skipped_checks)
 
@@ -186,6 +195,176 @@ def check_transaction_beneficiary_references(
         for row in unmatched_left_rows(joined).to_dict("records")
         if _has_value(row["beneficiary_id"])
     ]
+    return ReconciliationResult(issues=duplicate_issues + issues, skipped_checks=[])
+
+
+def check_beneficiary_entitlements(
+    transactions: AuditDataset,
+    beneficiaries: AuditDataset,
+) -> ReconciliationResult:
+    required_columns = {"beneficiary_id", "amount"}
+    has_transaction_fields = required_columns.issubset(transactions.dataframe.columns)
+    has_expected_amount = "expected_amount" in beneficiaries.dataframe.columns
+    if not has_transaction_fields or not has_expected_amount:
+        return ReconciliationResult(
+            issues=[],
+            skipped_checks=[
+                SkippedCheck(
+                    check_name="beneficiary_entitlement",
+                    dataset="beneficiaries",
+                    reason="beneficiary_id and amount are required in transactions, and expected_amount is required in beneficiaries.",
+                )
+            ],
+        )
+
+    transaction_amounts = parse_amounts(transactions.dataframe["amount"])
+    valid_transactions = transactions.dataframe[
+        transactions.dataframe["beneficiary_id"].astype(str).str.strip().ne("")
+        & transaction_amounts.notna()
+    ].copy()
+    if valid_transactions.empty:
+        return ReconciliationResult(issues=[], skipped_checks=[])
+
+    valid_transactions["_amount_numeric"] = transaction_amounts.loc[valid_transactions.index]
+    actual_by_beneficiary = (
+        valid_transactions.groupby("beneficiary_id", dropna=False)["_amount_numeric"]
+        .sum()
+        .reset_index(name="actual_amount")
+    )
+
+    beneficiaries_for_entitlement = deduplicate_reference_rows(beneficiaries.dataframe, "beneficiary_id")
+    expected = beneficiaries_for_entitlement[["beneficiary_id", "expected_amount"]].copy()
+    expected["_expected_amount_numeric"] = parse_amounts(expected["expected_amount"])
+    expected = expected[
+        expected["beneficiary_id"].astype(str).str.strip().ne("")
+        & expected["_expected_amount_numeric"].notna()
+    ].copy()
+    if expected.empty:
+        return ReconciliationResult(issues=[], skipped_checks=[])
+
+    joined = actual_by_beneficiary.merge(expected, how="inner", on="beneficiary_id", validate="many_to_one")
+    overpaid = joined[joined["actual_amount"].gt(joined["_expected_amount_numeric"])]
+
+    issues = [
+        ValidationIssue(
+            dataset="transactions",
+            row_number=None,
+            transaction_id=None,
+            field="amount",
+            issue_type="beneficiary_overpaid",
+            severity="error",
+            related_dataset="beneficiaries",
+            related_record_id=_clean_optional(row["beneficiary_id"]),
+            message=(
+                f"Beneficiary '{row['beneficiary_id']}' received "
+                f"{row['actual_amount']:,.2f}, above expected amount "
+                f"{row['_expected_amount_numeric']:,.2f}."
+            ),
+        )
+        for row in overpaid.to_dict("records")
+    ]
+    return ReconciliationResult(issues=issues, skipped_checks=[])
+
+
+def check_budget_reconciliation(
+    transactions: AuditDataset,
+    budget: AuditDataset,
+) -> ReconciliationResult:
+    match = _first_available_match(
+        transactions.dataframe,
+        budget.dataframe,
+        preferred_pairs=(("budget_line_id", "budget_line_id"), ("budget_category", "category")),
+    )
+    has_transaction_amount = "amount" in transactions.dataframe.columns
+    has_approved_amount = "approved_amount" in budget.dataframe.columns
+    if match is None or not has_transaction_amount or not has_approved_amount:
+        return ReconciliationResult(
+            issues=[],
+            skipped_checks=[
+                SkippedCheck(
+                    check_name="transaction_budget_reference",
+                    dataset="budget",
+                    reason="A budget line/category, transaction amount, and approved_amount are required for budget reconciliation.",
+                )
+            ],
+        )
+
+    transaction_field, budget_field = match
+    transaction_amounts = parse_amounts(transactions.dataframe["amount"])
+    transactions_with_rows = with_audit_row_numbers(transactions.dataframe)
+    valid_transactions = transactions_with_rows[
+        transactions_with_rows[transaction_field].astype(str).str.strip().ne("")
+        & transaction_amounts.notna()
+    ].copy()
+    valid_transactions["_amount_numeric"] = transaction_amounts.loc[valid_transactions.index]
+
+    duplicate_issues = duplicate_reference_key_issues(
+        budget,
+        key_field=budget_field,
+        issue_type="duplicate_budget_reference",
+        message_template="Budget reference '{value}' appears more than once in the budget file.",
+    )
+    budget_for_join = deduplicate_reference_rows(budget.dataframe, budget_field)
+    budget_work = budget_for_join[[budget_field, "approved_amount"]].copy()
+    budget_work["_approved_amount_numeric"] = parse_amounts(budget_work["approved_amount"])
+    valid_budget = budget_work[
+        budget_work[budget_field].astype(str).str.strip().ne("")
+        & budget_work["_approved_amount_numeric"].notna()
+    ].copy()
+
+    issues: list[ValidationIssue] = []
+    if not valid_transactions.empty and not valid_budget.empty:
+        valid_budget_keys = set(normalize_join_key(valid_budget[budget_field]).dropna())
+        transaction_keys = normalize_join_key(valid_transactions[transaction_field])
+        unknown_transactions = valid_transactions[~transaction_keys.isin(valid_budget_keys)]
+        issues.extend(
+            _reference_issue(
+                row=row,
+                field=transaction_field,
+                issue_type="unknown_budget_line",
+                related_dataset="budget",
+                related_record_id=row[transaction_field],
+                message=f"Budget reference '{row[transaction_field]}' was not found in the budget file.",
+            )
+            for row in unknown_transactions.to_dict("records")
+        )
+
+        spend_by_line = (
+            valid_transactions.groupby(transaction_field, dropna=False)["_amount_numeric"]
+            .sum()
+            .reset_index(name="actual_amount")
+        )
+        joined = spend_by_line.merge(
+            valid_budget,
+            how="left",
+            left_on=transaction_field,
+            right_on=budget_field,
+            validate="many_to_one",
+        )
+
+        over_budget = joined[
+            joined["_approved_amount_numeric"].notna()
+            & joined["actual_amount"].gt(joined["_approved_amount_numeric"])
+        ]
+        issues.extend(
+            ValidationIssue(
+                dataset="transactions",
+                row_number=None,
+                transaction_id=None,
+                field="amount",
+                issue_type="budget_line_overspent",
+                severity="error",
+                related_dataset="budget",
+                related_record_id=_clean_optional(row[transaction_field]),
+                message=(
+                    f"Budget line '{row[transaction_field]}' actual spend "
+                    f"{row['actual_amount']:,.2f} exceeds approved amount "
+                    f"{row['_approved_amount_numeric']:,.2f}."
+                ),
+            )
+            for row in over_budget.to_dict("records")
+        )
+
     return ReconciliationResult(issues=duplicate_issues + issues, skipped_checks=[])
 
 

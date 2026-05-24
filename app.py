@@ -164,7 +164,10 @@ def render_results(result, schema_result, summary: dict[str, object]) -> None:
 
 
 def render_multi_file_reconciliation(profiles) -> None:
-    st.caption("Upload a transaction file and optional reference files. Budget checks are not exposed yet.")
+    st.caption(
+        "Upload a transaction file and optional reference files. Vendors, beneficiaries, "
+        "and budget files are reconciled when available."
+    )
 
     transaction_file = st.file_uploader(
         "Transactions",
@@ -181,13 +184,18 @@ def render_multi_file_reconciliation(profiles) -> None:
         type=["csv", "xlsx", "xls"],
         key="phase2_beneficiaries",
     )
+    budget_file = st.file_uploader(
+        "Budget",
+        type=["csv", "xlsx", "xls"],
+        key="phase2_budget",
+    )
 
     if transaction_file is None:
         st.info("Upload a transaction file to start multi-file reconciliation.")
         return
 
-    if vendor_file is None and beneficiary_file is None:
-        st.warning("Upload at least one reference file, such as vendors or beneficiaries.")
+    if vendor_file is None and beneficiary_file is None and budget_file is None:
+        st.warning("Upload at least one reference file, such as vendors, beneficiaries, or budget.")
         return
 
     adjust_mappings = st.checkbox("Review or adjust schema mappings", value=False)
@@ -197,6 +205,7 @@ def render_multi_file_reconciliation(profiles) -> None:
             DatasetType.TRANSACTIONS: transaction_file,
             DatasetType.VENDORS: vendor_file,
             DatasetType.BENEFICIARIES: beneficiary_file,
+            DatasetType.BUDGET: budget_file,
         }
         prepared_datasets: dict[DatasetType, AuditDataset] = {}
         schema_results = {}
@@ -243,6 +252,7 @@ def render_multi_file_reconciliation(profiles) -> None:
             transactions=prepared_datasets[DatasetType.TRANSACTIONS],
             vendors=prepared_datasets.get(DatasetType.VENDORS),
             beneficiaries=prepared_datasets.get(DatasetType.BENEFICIARIES),
+            budget=prepared_datasets.get(DatasetType.BUDGET),
         )
         audit_result = run_bundle_audit(bundle)
         audit_workbook = build_bundle_audit_workbook(audit_result, schema_results)
@@ -318,6 +328,9 @@ def render_multi_file_reconciliation(profiles) -> None:
         if bundle.beneficiaries:
             st.write("Beneficiaries")
             st.dataframe(bundle.beneficiaries.dataframe, use_container_width=True)
+        if bundle.budget:
+            st.write("Budget")
+            st.dataframe(bundle.budget.dataframe, use_container_width=True)
 
 
 def render_dataset_mapping(

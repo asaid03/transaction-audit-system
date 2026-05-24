@@ -9,7 +9,7 @@ Python and Streamlit prototype for testing financial transaction files, reconcil
 - Auto-detects common column names and supports manual schema mapping.
 - Saves dataset-scoped import profiles for repeat file formats.
 - Runs single-file transaction validation checks.
-- Runs multi-file reconciliation against vendors and beneficiaries.
+- Runs multi-file reconciliation against vendors, beneficiaries, and budgets.
 - Suggests possible vendor matches when exact vendor matching fails but a high-confidence fuzzy name match exists.
 - Records skipped checks when optional reference files are missing.
 - Produces reviewer-friendly audit workbooks with findings, risk levels, recommended actions, and raw evidence.
@@ -40,6 +40,7 @@ Supported files:
 - transactions, required
 - vendors/suppliers, optional
 - beneficiaries, optional
+- budget, optional
 
 Checks include:
 
@@ -48,8 +49,10 @@ Checks include:
 - transactions referencing beneficiaries not found in the beneficiary register
 - duplicate vendor reference keys
 - duplicate beneficiary reference keys
+- beneficiaries paid more than their expected amount, when `expected_amount` is provided
+- spend over approved budget lines, when a budget file is uploaded
 
-Budget reconciliation is the next planned slice and is not implemented yet.
+Vendor concentration, threshold structuring, and timing anomaly checks are planned later.
 
 ## Audit Workbook
 
@@ -66,7 +69,7 @@ The multi-file audit workbook includes:
 - `raw_issues`
 - `skipped_checks`
 - `schema_mappings`
-- uploaded input datasets such as `transactions`, `vendors`, and `beneficiaries`
+- uploaded input datasets such as `transactions`, `vendors`, `beneficiaries`, and `budget`
 
 Start with `review_findings`. It is the human-facing sheet with priority, review status, finding explanation, recommended action, and evidence.
 
@@ -105,7 +108,8 @@ Run the Phase 2 sample CLI:
 .\.venv\Scripts\python.exe -m transaction_audit.bundle_cli `
   --transactions sample_data\phase2_transactions.csv `
   --vendors sample_data\phase2_vendors.csv `
-  --beneficiaries sample_data\phase2_beneficiaries.csv
+  --beneficiaries sample_data\phase2_beneficiaries.csv `
+  --budget sample_data\phase2_budget.csv
 ```
 
 ## Design Principles

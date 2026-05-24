@@ -12,6 +12,7 @@ class BundleCliTests(unittest.TestCase):
             transactions_path=Path("sample_data/phase2_transactions.csv"),
             vendors_path=Path("sample_data/phase2_vendors.csv"),
             beneficiaries_path=Path("sample_data/phase2_beneficiaries.csv"),
+            budget_path=Path("sample_data/phase2_budget.csv"),
         )
 
         result = reconcile_bundle(bundle)
@@ -23,3 +24,5 @@ class BundleCliTests(unittest.TestCase):
         self.assertIn("zero_amount", transaction_issue_types)
         self.assertIn("unknown_vendor_reference", issue_types)
         self.assertIn("unknown_beneficiary_reference", issue_types)
+        self.assertIn("unknown_budget_line", issue_types)
+        self.assertIn("budget_line_overspent", issue_types)
