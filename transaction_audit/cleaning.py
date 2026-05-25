@@ -259,7 +259,12 @@ def _unique_columns(values: list[str]) -> list[str]:
 
 
 def _infer_account_id(text: str) -> str | None:
-    match = re.search(r"(?:account|wallet):\s*([^-]+)", text, flags=re.IGNORECASE)
+    currency_choices = "|".join(KNOWN_CURRENCIES)
+    match = re.search(
+        rf"(?:account|wallet):\s*(.+?)(?:\s+-\s+(?:{currency_choices})\b|$)",
+        text,
+        flags=re.IGNORECASE,
+    )
     if not match:
         return None
     return match.group(1).strip()

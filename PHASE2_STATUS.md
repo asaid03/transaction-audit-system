@@ -1,12 +1,12 @@
 # Phase 2 Status
 
-Last updated: 2026-05-24
+Last updated: 2026-05-25
 
 ## Status
 
-Phase 2 is complete and merged into `main`.
+Phase 2 and Phase 2.5 are complete and merged into `main`.
 
-Phase 2 turned the project from a single-file transaction validator into a multi-file audit prototype with reviewer-friendly outputs.
+Phase 2 turned the project from a single-file transaction validator into a multi-file audit prototype with reviewer-friendly outputs. Phase 2.5 added conservative cleaning for realistic bank, mobile-money, and ledger-style transaction exports.
 
 ## Completed Scope
 
@@ -24,14 +24,15 @@ Phase 2 turned the project from a single-file transaction validator into a multi
 - Multi-file Streamlit workflow.
 - Reviewer-friendly audit workbook.
 - Audit rules/risk reference in `AUDIT_RULES.md`.
-
-Budget support is planned next but is not implemented yet.
+- Conservative bank/export cleaning when normal schema detection fails.
+- Realistic messy transaction fixtures for bank, mobile-money, and ledger exports.
 
 ## Current Multi-File Checks
 
 ```text
 transactions.vendor_id      -> vendors.vendor_id
 transactions.beneficiary_id -> beneficiaries.beneficiary_id
+transactions.budget_line_id -> budget.budget_line_id
 ```
 
 Current reconciliation findings:
@@ -59,7 +60,9 @@ Multi-file mode supports:
 - transactions upload
 - vendors/suppliers upload
 - beneficiaries upload
+- budget upload
 - automatic schema detection
+- bank/export cleaning fallback for transaction files
 - manual mapping only when needed or requested
 - audit workbook download
 - reviewer-facing findings table
@@ -80,7 +83,7 @@ Multi-file workbook sheets:
 - `raw_issues`
 - `skipped_checks`
 - `schema_mappings`
-- uploaded input datasets such as `transactions`, `vendors`, and `beneficiaries`
+- uploaded input datasets such as `transactions`, `vendors`, `beneficiaries`, and `budget`
 
 `review_findings` is the primary sheet for humans. It includes:
 
@@ -98,7 +101,7 @@ Multi-file workbook sheets:
 Latest verified state:
 
 ```text
-Ran 58 tests
+Ran 70 tests
 OK
 ```
 
@@ -110,16 +113,18 @@ python -m compileall app.py transaction_audit tests
 OK
 Phase 2 sample CLI
 OK
+Realistic cleaning fixtures
+OK
 ```
 
 ## Next Phase
 
-Budget reconciliation and beneficiary entitlement checks are now implemented.
+The next planned slice is Phase 3 review-priority scoring:
 
-The next planned slice is spending-pattern anomaly checks:
+- add `transaction_audit/risk.py`
+- generate deterministic `review_priority_score`, `review_priority_band`, and `review_priority_drivers`
+- use worst-signal-wins for the band and additive capped weights for the raw score
+- add a determinism test: the same inputs must produce identical scores and drivers
+- keep the wording as review priority, not fraud probability
 
-- vendor concentration
-- threshold structuring
-- unusual timing such as weekend, month-end, or project-closeout clusters
-
-Do not add ML or opaque risk scoring before deterministic anomaly rules are stable.
+Do not add ML or opaque risk scoring before reviewed outcome data exists.

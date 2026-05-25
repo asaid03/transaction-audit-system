@@ -11,7 +11,7 @@ Build an explainable financial audit prototype that can:
 - produce reviewer-friendly audit outputs,
 - grow in small, tested phases.
 
-The current completed scope is Phase 2: multi-file transaction, vendor, and beneficiary reconciliation. The next planned slice is budget reconciliation.
+The current completed scope is Phase 2.5: multi-file transaction, vendor, beneficiary, and budget reconciliation plus conservative cleaning for realistic bank/mobile-money/ledger transaction exports. The next planned slice is Phase 3 review-priority scoring.
 
 ## Think Before Coding
 
@@ -71,7 +71,8 @@ For non-trivial changes:
 .\.venv\Scripts\python.exe -m transaction_audit.bundle_cli `
   --transactions sample_data\phase2_transactions.csv `
   --vendors sample_data\phase2_vendors.csv `
-  --beneficiaries sample_data\phase2_beneficiaries.csv
+  --beneficiaries sample_data\phase2_beneficiaries.csv `
+  --budget sample_data\phase2_budget.csv
 ```
 
 5. Commit only when verification passes.
@@ -85,16 +86,15 @@ For non-trivial changes:
 
 ## Next Planned Slice
 
-Budget reconciliation:
+Phase 3 review-priority scoring:
 
 ```text
-transactions.budget_line_id -> budget.budget_line_id
-sum actual spend by budget line
-compare against approved_amount
-flag over-budget lines for review
+review_priority_band = worst signal wins
+review_priority_score = additive weights capped at 100
+review_priority_drivers = stable, human-readable reasons
 ```
 
-Do not start vendor concentration, threshold structuring, timing anomalies, or beneficiary entitlement before budget reconciliation is stable.
+The score must be deterministic. The same input data and issues must produce identical scores, bands, and drivers. Do not call it a fraud score or fraud probability.
 
 ## Git And Safety
 

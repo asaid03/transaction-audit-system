@@ -73,6 +73,20 @@ class CleaningTests(unittest.TestCase):
         self.assertEqual("100.00", cleaned.loc[0, "amount"])
         self.assertEqual("PAYMENT TO SUPPLIER", cleaned.loc[0, "counterparty"])
 
+    def test_preserves_hyphenated_account_ids_from_metadata(self):
+        raw = pd.DataFrame(
+            [
+                ["Account: ACC-1234567890 - USD CURRENT ACCOUNT", "", "", "", "", ""],
+                ["Ref No", "Value Date", "Debit", "Credit", "Balance", "Narration"],
+                ["TRF/001", "01-May-26", "100.00", "", "900.00", "PAYMENT TO SUPPLIER"],
+            ],
+            columns=["SALAAM BANK", "", "", "", "", ""],
+        )
+
+        result = clean_transaction_export(raw)
+
+        self.assertEqual("ACC-1234567890", result.dataframe.loc[0, "account_id"])
+
     def test_returns_warning_when_no_transaction_header_is_found(self):
         raw = load_dataset("sample_data/phase2_vendors.csv")
 
