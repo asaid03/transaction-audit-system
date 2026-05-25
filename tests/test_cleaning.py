@@ -1,5 +1,7 @@
 import unittest
 
+import pandas as pd
+
 from transaction_audit.cleaning import clean_transaction_export
 from transaction_audit.ingestion import load_dataset
 from transaction_audit.validation import validate_transactions
@@ -52,6 +54,24 @@ class CleaningTests(unittest.TestCase):
         self.assertEqual(["FIELD-OPS", "FIELD-OPS", "OPERATIONS"], cleaned["account_id"].tolist())
         self.assertEqual([6, 7, 8], cleaned["source_row_number"].tolist())
         self.assertTrue(validate_transactions(cleaned).is_valid)
+
+    def test_detects_headers_with_currency_suffixes_and_compound_names(self):
+        raw = pd.DataFrame(
+            [
+                ["Account: 1234567890 - USD CURRENT ACCOUNT", "", "", "", "", ""],
+                ["Ref No", "Value Date", "Debit (USD)", "Credit (USD)", "Balance", "Description / Narration"],
+                ["TRF/001", "01-May-26", "100.00", "", "900.00", "PAYMENT TO SUPPLIER"],
+            ],
+            columns=["SALAAM BANK", "", "", "", "", ""],
+        )
+
+        result = clean_transaction_export(raw)
+        cleaned = result.dataframe
+
+        self.assertTrue(result.applied)
+        self.assertEqual("TRF/001", cleaned.loc[0, "transaction_id"])
+        self.assertEqual("100.00", cleaned.loc[0, "amount"])
+        self.assertEqual("PAYMENT TO SUPPLIER", cleaned.loc[0, "counterparty"])
 
     def test_returns_warning_when_no_transaction_header_is_found(self):
         raw = load_dataset("sample_data/phase2_vendors.csv")

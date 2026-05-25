@@ -3,7 +3,7 @@ import unittest
 import pandas as pd
 
 from transaction_audit.datasets import DatasetType
-from transaction_audit.schema import apply_schema, source_mapping_from_canonical
+from transaction_audit.schema import apply_schema, normalize_column_key, source_mapping_from_canonical
 from transaction_audit.workflow import aliases_for_dataset, allowed_mapping_columns, build_mapping_plan, required_mapping_columns
 
 
@@ -26,6 +26,11 @@ class SchemaTests(unittest.TestCase):
             },
             result.source_to_canonical,
         )
+
+    def test_normalizes_real_bank_export_column_names(self):
+        self.assertEqual("debit", normalize_column_key("Debit (USD)"))
+        self.assertEqual("credit", normalize_column_key("Credit (USD)"))
+        self.assertEqual("description", normalize_column_key("Description / Narration"))
 
     def test_explicit_empty_mapping_does_not_fall_back_to_auto_detect(self):
         dataframe = pd.DataFrame(columns=["txn_ref", "amt"])

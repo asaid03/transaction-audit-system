@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+import re
 
 import pandas as pd
 
@@ -28,7 +29,10 @@ class SchemaResult:
 
 
 def normalize_column_key(column: object) -> str:
-    raw = str(column).strip().lower().replace("-", " ").replace(".", " ")
+    raw = str(column).strip().lower()
+    raw = re.sub(r"\s*\([^)]*\)\s*$", "", raw)
+    raw = raw.split("/", maxsplit=1)[0]
+    raw = raw.replace("-", " ").replace(".", " ")
     return " ".join(raw.split())
 
 
