@@ -31,6 +31,9 @@ from transaction_audit.workflow import allowed_mapping_columns, apply_mapping_pl
 
 FINDING_DISPLAY_COLUMNS = [
     "finding_id",
+    "review_priority_score",
+    "review_priority_band",
+    "review_priority_drivers",
     "priority",
     "review_status",
     "finding",

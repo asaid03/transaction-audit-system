@@ -12,6 +12,7 @@ Python and Streamlit prototype for testing financial transaction files, reconcil
 - Runs single-file transaction validation checks.
 - Runs multi-file reconciliation against vendors, beneficiaries, and budgets.
 - Suggests possible vendor matches when exact vendor matching fails but a high-confidence fuzzy name match exists.
+- Adds deterministic review-priority scores, bands, and drivers for exception review.
 - Records skipped checks when optional reference files are missing.
 - Produces reviewer-friendly audit workbooks with findings, risk levels, recommended actions, and raw evidence.
 
@@ -65,6 +66,7 @@ The multi-file audit workbook includes:
 - `summary`
 - `review_findings`
 - `finding_summary`
+- `transaction_review`
 - `dataset_summary`
 - `issue_counts`
 - `transaction_issues`
@@ -74,7 +76,7 @@ The multi-file audit workbook includes:
 - `schema_mappings`
 - uploaded input datasets such as `transactions`, `vendors`, `beneficiaries`, and `budget`
 
-Start with `review_findings`. It is the human-facing sheet with priority, review status, finding explanation, recommended action, and evidence.
+Start with `review_findings`. It is the human-facing sheet with review-priority score, band, drivers, review status, finding explanation, recommended action, and evidence. Use `transaction_review` when you want a row-level priority queue, including rows with no technical issue.
 
 ## Rules Reference
 

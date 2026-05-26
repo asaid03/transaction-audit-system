@@ -61,6 +61,7 @@ class AuditTests(unittest.TestCase):
                 "summary",
                 "review_findings",
                 "finding_summary",
+                "transaction_review",
                 "raw_issues",
                 "issue_counts",
                 "schema_mapping",
@@ -87,6 +88,8 @@ class AuditTests(unittest.TestCase):
         self.assertIn("finding", findings.columns)
         self.assertIn("recommended_action", findings.columns)
         self.assertIn("review_status", findings.columns)
+        self.assertIn("review_priority_score", findings.columns)
+        self.assertIn("review_priority_drivers", findings.columns)
         self.assertEqual("Needs review", findings.loc[0, "review_status"])
         self.assertEqual("Zero amount transaction", findings.loc[0, "finding"])
 
@@ -169,6 +172,7 @@ class AuditTests(unittest.TestCase):
                 "summary",
                 "review_findings",
                 "finding_summary",
+                "transaction_review",
                 "dataset_summary",
                 "issue_counts",
                 "transaction_issues",

@@ -11,7 +11,7 @@ Build an explainable financial audit prototype that can:
 - produce reviewer-friendly audit outputs,
 - grow in small, tested phases.
 
-The current completed scope is Phase 2.5: multi-file transaction, vendor, beneficiary, and budget reconciliation plus conservative cleaning for realistic bank/mobile-money/ledger transaction exports. The next planned slice is Phase 3 review-priority scoring.
+The current completed scope is Phase 2.5: multi-file transaction, vendor, beneficiary, and budget reconciliation plus conservative cleaning for realistic bank/mobile-money/ledger transaction exports. Phase 3 review-priority scoring has started with deterministic score, band, and driver output.
 
 ## Think Before Coding
 
@@ -84,7 +84,7 @@ For non-trivial changes:
 - New findings should include a clear title, why it matters, and recommended action.
 - Do not let raw technical issue logs become the primary user-facing output.
 
-## Next Planned Slice
+## Phase 3 Scoring Boundary
 
 Phase 3 review-priority scoring:
 
@@ -95,6 +95,8 @@ review_priority_drivers = stable, human-readable reasons
 ```
 
 The score must be deterministic. The same input data and issues must produce identical scores, bands, and drivers. Do not call it a fraud score or fraud probability.
+
+Keep scoring logic in `transaction_audit/risk.py`. Do not add scoring rules to `transaction_audit/reconciliation.py`; reconciliation should keep producing factual issues, and risk should decide review priority.
 
 ## Git And Safety
 

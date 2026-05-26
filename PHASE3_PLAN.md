@@ -1,6 +1,15 @@
 # Phase 3 Plan
 
-Last updated: 2026-05-25
+Last updated: 2026-05-26
+
+## Current Status
+
+Initial scoring slice implemented on `phase-3-review-priority`:
+
+- `transaction_audit/risk.py` scores existing validation and reconciliation issues.
+- `review_findings` includes deterministic score, band, and drivers.
+- Workbooks include a `transaction_review` sheet for row-level prioritisation.
+- Determinism coverage is in `tests/test_risk.py`.
 
 ## Goal
 
@@ -37,7 +46,7 @@ The same inputs must produce identical outputs every time:
 - same band
 - same driver order
 
-Add a dedicated determinism test before wiring the score into exports.
+The first determinism test is implemented in `tests/test_risk.py`.
 
 ## Initial Signals
 
@@ -52,7 +61,6 @@ High-priority examples:
 
 Medium-priority examples:
 
-- possible duplicate payment
 - possible fuzzy vendor match
 - large amount transaction
 - unsupported currency
@@ -60,25 +68,23 @@ Medium-priority examples:
 Low-priority examples:
 
 - zero amount
-- round-number payment
-- weekend or month-end timing
 - rare counterparty
 
-Start with existing validation and reconciliation issues before adding new pattern signals.
+Possible duplicate payment is currently treated as high because duplicate-looking payments are a direct exception-review item.
 
 ## Build Order
 
-1. Add `transaction_audit/risk.py`.
-2. Score existing validation and reconciliation issues.
-3. Add tests for high, medium, low, cumulative score, worst-band behavior, and determinism.
-4. Add score, band, and drivers to `review_findings`.
-5. Add score fields to the audit workbook.
-6. Add minimal Streamlit sorting/filtering by priority.
+1. Add `transaction_audit/risk.py`. Done.
+2. Score existing validation and reconciliation issues. Done.
+3. Add tests for high, medium, low, cumulative score, worst-band behavior, and determinism. Done.
+4. Add score, band, and drivers to `review_findings`. Done.
+5. Add score fields to the audit workbook. Done.
+6. Add minimal Streamlit sorting/filtering by priority. Not started.
 
 ## Later
 
 After the basic scoring layer is stable:
 
-- add round-number, weekend, month-end, rare counterparty, and threshold-adjacent signals
+- add round-number, weekend, month-end, and threshold-adjacent signals
 - redesign the UI around an exception review queue
 - add review workflow and SQLite persistence only after review status/notes become useful

@@ -1,17 +1,29 @@
 # Audit Rules and Risk Levels
 
-Last updated: 2026-05-23
+Last updated: 2026-05-26
 
 This file lists the checks currently implemented by the audit engine. It is meant to make the review scope clear for developers, testers, and non-technical reviewers.
 
+## Review Priority
+
+The workbook now includes deterministic review-priority fields:
+
+| Field | Meaning |
+| --- | --- |
+| `review_priority_score` | Rule-based score from 0-100. Multiple drivers add together and cap at 100. |
+| `review_priority_band` | Low, medium, or high. The highest-risk signal controls the band. |
+| `review_priority_drivers` | Human-readable reasons behind the score. |
+
+These scores are audit-support signals, not fraud probabilities or audit conclusions.
+
 ## Risk Levels
 
-| Severity | Workbook priority | Meaning |
+| Severity / Signal | Workbook priority | Meaning |
 | --- | --- | --- |
 | `error` | High | Blocking or high-risk issue. The record or reference should be reviewed before relying on the audit output. |
 | `warning` | Medium | Review signal. The data may be valid, but the item deserves human attention. |
 
-The workbook converts technical severities into reviewer-facing priorities in `review_findings`.
+The workbook combines technical severities with issue-specific scoring rules in `review_findings` and `transaction_review`.
 
 ## Single-File Transaction Rules
 
@@ -66,6 +78,7 @@ The system currently answers:
 - whether reference files contain duplicate keys.
 - whether beneficiaries received more than expected.
 - whether spend exceeds approved budget lines.
+- which findings and transaction rows should be reviewed first using deterministic priority scores.
 
 It does not yet perform vendor concentration, threshold structuring, or timing anomaly analysis.
 
