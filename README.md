@@ -13,6 +13,7 @@ Python and Streamlit prototype for testing financial transaction files, reconcil
 - Runs multi-file reconciliation against vendors, beneficiaries, and budgets.
 - Suggests possible vendor matches when exact vendor matching fails but a high-confidence fuzzy name match exists.
 - Adds deterministic review-priority scores, bands, and drivers for exception review.
+- Shows a review queue with filters for priority band, issue type, account, currency, and counterparty.
 - Records skipped checks when optional reference files are missing.
 - Produces reviewer-friendly audit workbooks with findings, risk levels, recommended actions, and raw evidence.
 

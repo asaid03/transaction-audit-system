@@ -79,7 +79,7 @@ Possible duplicate payment is currently treated as high because duplicate-lookin
 3. Add tests for high, medium, low, cumulative score, worst-band behavior, and determinism. Done.
 4. Add score, band, and drivers to `review_findings`. Done.
 5. Add score fields to the audit workbook. Done.
-6. Add minimal Streamlit sorting/filtering by priority. Not started.
+6. Add minimal Streamlit sorting/filtering by priority. Done.
 
 ## Later
 

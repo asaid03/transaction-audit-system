@@ -24,6 +24,14 @@ from transaction_audit.config import REQUIRED_COLUMNS
 from transaction_audit.datasets import AuditDataset, DATASET_DEFINITIONS, DatasetType
 from transaction_audit.ingestion import load_dataset, load_transactions
 from transaction_audit.profiles import delete_import_profile, list_import_profiles, profiles_dataframe, save_import_profile
+from transaction_audit.review import (
+    filter_by_issue_types,
+    filter_by_values,
+    sort_by_review_priority,
+    unique_issue_types,
+    unique_values,
+)
+from transaction_audit.risk import score_transactions
 from transaction_audit.schema import apply_schema, source_mapping_from_canonical
 from transaction_audit.validation import validate_transactions
 from transaction_audit.workflow import allowed_mapping_columns, apply_mapping_plan, build_mapping_plan, required_mapping_columns
@@ -42,6 +50,22 @@ FINDING_DISPLAY_COLUMNS = [
     "row_number",
     "transaction_id",
     "related_record_id",
+]
+TRANSACTION_REVIEW_DISPLAY_COLUMNS = [
+    "review_priority_score",
+    "review_priority_band",
+    "review_priority_drivers",
+    "row_number",
+    "issue_types",
+    "transaction_id",
+    "transaction_date",
+    "account_id",
+    "amount",
+    "currency",
+    "counterparty",
+    "vendor_id",
+    "beneficiary_id",
+    "budget_line_id",
 ]
 
 
@@ -133,6 +157,7 @@ def render_results(result, schema_result, summary: dict[str, object]) -> None:
     summary_frame = summary_dataframe(summary)
     issues_frame = result.issues_dataframe()
     findings_frame = review_findings_dataframe(issues_frame)
+    transaction_review = score_transactions(result.transactions, issues_frame)
     issue_counts_frame = issue_counts_dataframe(result)
     audit_workbook = build_audit_workbook(result, schema_result, summary)
 
@@ -147,14 +172,17 @@ def render_results(result, schema_result, summary: dict[str, object]) -> None:
     else:
         st.warning("Validation completed with errors that need review.")
 
-    tab_transactions, tab_issues, tab_audit = st.tabs(["Transactions", "Issues", "Audit Pack"])
+    tab_review, tab_transactions, tab_issues, tab_audit = st.tabs(["Review", "Transactions", "Issues", "Audit Pack"])
+
+    with tab_review:
+        render_review_queue(findings_frame, transaction_review, key_prefix="single")
 
     with tab_transactions:
         st.dataframe(result.transactions, use_container_width=True)
         st.caption("Canonical dataframe passed to the pure Python validation engine.")
 
     with tab_issues:
-        st.dataframe(display_findings(findings_frame), use_container_width=True)
+        st.dataframe(display_findings(sort_by_review_priority(findings_frame)), use_container_width=True)
         if not issue_counts_frame.empty:
             st.write("Issue counts")
             st.dataframe(issue_counts_frame, use_container_width=True)
@@ -277,6 +305,7 @@ def render_multi_file_reconciliation(profiles) -> None:
     skipped = audit_result.skipped_checks_dataframe()
     combined_issues = audit_result.all_issues_dataframe()
     review_findings = review_findings_dataframe(combined_issues)
+    transaction_review = score_transactions(audit_result.transaction_validation.transactions, combined_issues)
 
     metric_columns = st.columns(4)
     metric_columns[0].metric("Transactions", bundle.transactions.row_count)
@@ -295,7 +324,8 @@ def render_multi_file_reconciliation(profiles) -> None:
         st.success("No audit issues found in the uploaded files.")
     else:
         st.warning("Audit completed with issues for review.")
-        st.dataframe(display_findings(review_findings), use_container_width=True)
+
+    render_review_queue(review_findings, transaction_review, key_prefix="multi")
 
     with st.expander("Dataset and mapping details"):
         st.dataframe(bundle.dataset_summary(), use_container_width=True)
@@ -451,6 +481,96 @@ def display_findings(findings: pd.DataFrame) -> pd.DataFrame:
     if findings.empty:
         return findings
     return findings[[column for column in FINDING_DISPLAY_COLUMNS if column in findings.columns]]
+
+
+def display_transaction_review(transaction_review: pd.DataFrame) -> pd.DataFrame:
+    if transaction_review.empty:
+        return transaction_review
+    return transaction_review[
+        [column for column in TRANSACTION_REVIEW_DISPLAY_COLUMNS if column in transaction_review.columns]
+    ]
+
+
+def render_review_queue(
+    findings: pd.DataFrame,
+    transaction_review: pd.DataFrame,
+    key_prefix: str,
+) -> None:
+    st.write("Findings")
+    filtered_findings = review_findings_with_filters(findings, key_prefix=key_prefix)
+    st.dataframe(display_findings(filtered_findings), use_container_width=True)
+
+    st.write("Transaction review")
+    filtered_transactions = transaction_review_with_filters(transaction_review, key_prefix=key_prefix)
+    st.dataframe(display_transaction_review(filtered_transactions), use_container_width=True)
+
+
+def review_findings_with_filters(findings: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
+    if findings.empty:
+        return findings
+
+    band_column, issue_column, dataset_column = st.columns(3)
+    bands = band_column.multiselect(
+        "Band",
+        options=unique_values(findings, "review_priority_band"),
+        key=f"{key_prefix}_finding_bands",
+    )
+    issue_types = issue_column.multiselect(
+        "Issue type",
+        options=unique_issue_types(findings),
+        key=f"{key_prefix}_finding_issue_types",
+    )
+    datasets = dataset_column.multiselect(
+        "Dataset",
+        options=unique_values(findings, "dataset"),
+        key=f"{key_prefix}_finding_datasets",
+    )
+
+    filtered = sort_by_review_priority(findings)
+    filtered = filter_by_values(filtered, "review_priority_band", bands)
+    filtered = filter_by_issue_types(filtered, issue_types)
+    return filter_by_values(filtered, "dataset", datasets)
+
+
+def transaction_review_with_filters(transaction_review: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
+    if transaction_review.empty:
+        return transaction_review
+
+    first_row = st.columns(3)
+    bands = first_row[0].multiselect(
+        "Band",
+        options=unique_values(transaction_review, "review_priority_band"),
+        key=f"{key_prefix}_transaction_bands",
+    )
+    issue_types = first_row[1].multiselect(
+        "Issue type",
+        options=unique_issue_types(transaction_review),
+        key=f"{key_prefix}_transaction_issue_types",
+    )
+    currencies = first_row[2].multiselect(
+        "Currency",
+        options=unique_values(transaction_review, "currency"),
+        key=f"{key_prefix}_transaction_currencies",
+    )
+
+    second_row = st.columns(2)
+    accounts = second_row[0].multiselect(
+        "Account",
+        options=unique_values(transaction_review, "account_id"),
+        key=f"{key_prefix}_transaction_accounts",
+    )
+    counterparties = second_row[1].multiselect(
+        "Counterparty",
+        options=unique_values(transaction_review, "counterparty"),
+        key=f"{key_prefix}_transaction_counterparties",
+    )
+
+    filtered = sort_by_review_priority(transaction_review)
+    filtered = filter_by_values(filtered, "review_priority_band", bands)
+    filtered = filter_by_issue_types(filtered, issue_types)
+    filtered = filter_by_values(filtered, "currency", currencies)
+    filtered = filter_by_values(filtered, "account_id", accounts)
+    return filter_by_values(filtered, "counterparty", counterparties)
 
 
 def render_profile_manager(profiles) -> None:

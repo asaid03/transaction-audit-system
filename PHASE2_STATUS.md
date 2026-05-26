@@ -102,7 +102,7 @@ Multi-file workbook sheets:
 Latest verified state:
 
 ```text
-Ran 79 tests
+Ran 87 tests
 OK
 ```
 
