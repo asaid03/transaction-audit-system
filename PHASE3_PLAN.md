@@ -68,7 +68,7 @@ Medium-priority examples:
 Low-priority examples:
 
 - zero amount
-- rare counterparty
+- rare counterparty in files with enough rows for that signal to be meaningful
 
 Possible duplicate payment is currently treated as high because duplicate-looking payments are a direct exception-review item.
 

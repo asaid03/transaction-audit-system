@@ -16,6 +16,7 @@ RISK_COLUMNS = [
 ]
 BAND_ORDER = {"low": 0, "medium": 1, "high": 2}
 BAND_LABELS = {"low": "Low", "medium": "Medium", "high": "High"}
+MIN_RARE_COUNTERPARTY_ROWS = 10
 
 
 @dataclass(frozen=True)
@@ -170,6 +171,8 @@ def _large_amount_signals(transactions: pd.DataFrame, threshold: float) -> dict[
 def _rare_counterparty_signals(transactions: pd.DataFrame) -> dict[int, list[RiskSignal]]:
     if "counterparty" not in transactions:
         return {}
+    if len(transactions) < MIN_RARE_COUNTERPARTY_ROWS:
+        return {}
 
     normalized = transactions["counterparty"].astype("string").str.strip().str.lower()
     counts = normalized[normalized.notna() & normalized.ne("")].value_counts()
@@ -200,15 +203,15 @@ def _score_signals(signals: list[RiskSignal]) -> dict[str, object]:
 
 
 def _unique_signals(signals: list[RiskSignal]) -> list[RiskSignal]:
-    unique = []
-    seen = set()
+    unique_by_key: dict[tuple[int, str, str], RiskSignal] = {}
     for signal in signals:
-        key = (signal.points, signal.band, signal.driver)
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(signal)
-    return unique
+        unique_by_key.setdefault((signal.points, signal.band, signal.driver), signal)
+
+    unique = list(unique_by_key.values())
+    return sorted(
+        unique,
+        key=lambda signal: (-BAND_ORDER[signal.band], -signal.points, signal.driver),
+    )
 
 
 def _issue_group_key(issue: dict[str, object]) -> tuple[object, ...]:

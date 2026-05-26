@@ -84,6 +84,38 @@ class RiskTests(unittest.TestCase):
         self.assertEqual([0, 0], review["review_priority_score"].tolist())
         self.assertEqual(["low", "low"], review["review_priority_band"].tolist())
 
+    def test_rare_counterparty_signal_requires_enough_rows(self):
+        small_file = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "transaction_date": ["2026-05-01", "2026-05-02"],
+                "account_id": ["OPS", "OPS"],
+                "amount": ["100", "200"],
+                "currency": ["USD", "USD"],
+                "counterparty": ["Vendor A", "Vendor B"],
+            }
+        )
+        large_file = pd.DataFrame(
+            {
+                "transaction_id": [f"TXN-{number:03d}" for number in range(1, 11)],
+                "transaction_date": ["2026-05-01"] * 10,
+                "account_id": ["OPS"] * 10,
+                "amount": ["100"] * 10,
+                "currency": ["USD"] * 10,
+                "counterparty": ["Recurring Vendor"] * 9 + ["One-Off Vendor"],
+            }
+        )
+
+        small_result = validate_transactions(small_file)
+        large_result = validate_transactions(large_file)
+
+        small_review = score_transactions(small_result.transactions, small_result.issues_dataframe())
+        large_review = score_transactions(large_result.transactions, large_result.issues_dataframe())
+
+        self.assertEqual([0, 0], small_review["review_priority_score"].tolist())
+        self.assertEqual(10, large_review.loc[9, "review_priority_score"])
+        self.assertIn("Counterparty appears once in file", large_review.loc[9, "review_priority_drivers"])
+
     def test_possible_vendor_match_is_explainable_medium_priority(self):
         issues = pd.DataFrame(
             [
@@ -128,6 +160,46 @@ class RiskTests(unittest.TestCase):
         second = score_transactions(result.transactions, issues)
 
         pd.testing.assert_frame_equal(first, second)
+
+    def test_driver_order_does_not_depend_on_issue_order(self):
+        issues = pd.DataFrame(
+            [
+                {
+                    "dataset": "transactions",
+                    "row_number": 2,
+                    "transaction_id": "TXN-001",
+                    "field": "currency",
+                    "issue_type": "unsupported_currency",
+                    "severity": "warning",
+                    "related_dataset": None,
+                    "related_record_id": None,
+                    "message": "Unsupported currency.",
+                },
+                {
+                    "dataset": "transactions",
+                    "row_number": 2,
+                    "transaction_id": "TXN-001",
+                    "field": "transaction_date",
+                    "issue_type": "invalid_date",
+                    "severity": "error",
+                    "related_dataset": None,
+                    "related_record_id": None,
+                    "message": "Invalid date.",
+                },
+            ]
+        )
+
+        first = score_issues(issues)
+        second = score_issues(issues.iloc[::-1].reset_index(drop=True))
+
+        self.assertEqual(
+            "Invalid transaction date; Unsupported currency",
+            first.loc[0, "review_priority_drivers"],
+        )
+        self.assertEqual(
+            first.loc[0, "review_priority_drivers"],
+            second.loc[0, "review_priority_drivers"],
+        )
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ The workbook now includes deterministic review-priority fields:
 | `review_priority_drivers` | Human-readable reasons behind the score. |
 
 These scores are audit-support signals, not fraud probabilities or audit conclusions.
+Low-priority pattern signals, such as a one-off counterparty, are only applied when the file has enough rows for the pattern to be meaningful.
 
 ## Risk Levels
 
