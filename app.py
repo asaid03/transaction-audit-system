@@ -69,13 +69,101 @@ TRANSACTION_REVIEW_DISPLAY_COLUMNS = [
 ]
 
 
+def render_page_header() -> None:
+    st.title("Transaction Audit")
+    st.caption(
+        "Audit support for transaction files: validate the data, reconcile reference files, "
+        "prioritise exceptions, and export a review pack."
+    )
+
+
+def render_empty_start(title: str, guidance: list[str]) -> None:
+    st.info(title)
+    for item in guidance:
+        st.markdown(f"- {item}")
+
+
+def render_run_status(title: str, message: str, state: str) -> None:
+    if state == "ok":
+        st.success(f"{title}. {message}")
+    elif state == "error":
+        st.error(f"{title}. {message}")
+    else:
+        st.warning(f"{title}. {message}")
+
+
+def render_metric_row(metrics: list[tuple[str, object]]) -> None:
+    columns = st.columns(len(metrics))
+    for column, (label, value) in zip(columns, metrics):
+        column.metric(label, value)
+
+
+def render_priority_overview(
+    findings: pd.DataFrame,
+    transaction_review: pd.DataFrame,
+    skipped_count: int = 0,
+) -> None:
+    st.write("Review summary")
+    high = _priority_count(transaction_review, "high")
+    medium = _priority_count(transaction_review, "medium")
+    low = _priority_count(transaction_review, "low")
+    finding_count = len(findings)
+    render_metric_row(
+        [
+            ("High priority", high),
+            ("Medium priority", medium),
+            ("Low priority", low),
+            ("Findings", finding_count),
+        ]
+    )
+    if skipped_count:
+        st.caption(f"{skipped_count} check(s) were skipped because the needed reference file or fields were not available.")
+
+
+def clean_display_frame(dataframe: pd.DataFrame) -> pd.DataFrame:
+    if dataframe.empty:
+        return dataframe
+
+    display = dataframe.copy()
+    display = display.fillna("")
+    return display.replace({"None": "", "<NA>": "", "nan": ""})
+
+
+def display_dataset_summary(summary: pd.DataFrame) -> pd.DataFrame:
+    if summary.empty:
+        return summary
+
+    display = clean_display_frame(summary)
+    if "uploaded" in display:
+        display["uploaded"] = display["uploaded"].map({True: "Uploaded", False: "Not uploaded"}).fillna(display["uploaded"])
+    return display
+
+
+def display_mapping_summary(summary: pd.DataFrame) -> pd.DataFrame:
+    if summary.empty:
+        return summary
+
+    display = clean_display_frame(summary)
+    if "status" in display:
+        display["status"] = display["status"].astype("string").str.replace("_", " ").str.title()
+    return display
+
+
+def _priority_count(dataframe: pd.DataFrame, band: str) -> int:
+    if dataframe.empty or "review_priority_band" not in dataframe:
+        return 0
+
+    values = dataframe["review_priority_band"].astype("string").str.lower()
+    return int(values.eq(band.lower()).sum())
+
+
 def main() -> None:
     st.set_page_config(page_title="Transaction Audit", layout="wide")
-    st.title("Transaction Audit")
+    render_page_header()
 
     profiles = list_import_profiles()
     workflow = st.radio(
-        "Workflow",
+        "Choose audit mode",
         options=["Single-file validation", "Multi-file reconciliation"],
         horizontal=True,
     )
@@ -85,10 +173,22 @@ def main() -> None:
         render_profile_manager(profiles)
         return
 
-    uploaded_file = st.file_uploader("Upload transactions", type=["csv", "xlsx", "xls"])
+    st.markdown(
+        "Upload one transaction file to check whether the data is usable for review. "
+        "The app will clean bank-style exports when it can, map columns, flag exceptions, "
+        "and create an audit workbook."
+    )
+    uploaded_file = st.file_uploader("Transaction file", type=["csv", "xlsx", "xls"])
 
     if uploaded_file is None:
-        st.info("Upload a CSV or Excel file to run Phase 1 validation checks.")
+        render_empty_start(
+            "Start with a transaction file",
+            [
+                "Use a CSV or Excel export from a bank, mobile money platform, ERP, or ledger.",
+                "If column names are unusual, auto-detect will try first and manual mapping appears only when needed.",
+                "Results will be shown as review tasks, with detailed evidence available separately.",
+            ],
+        )
         render_profile_manager(profiles)
         st.stop()
 
@@ -161,31 +261,56 @@ def render_results(result, schema_result, summary: dict[str, object]) -> None:
     issue_counts_frame = issue_counts_dataframe(result)
     audit_workbook = build_audit_workbook(result, schema_result, summary)
 
-    metric_columns = st.columns(4)
-    metric_columns[0].metric("Rows Checked", summary["rows_checked"])
-    metric_columns[1].metric("Issues Found", summary["issues_found"])
-    metric_columns[2].metric("Errors", summary["error_count"])
-    metric_columns[3].metric("Warnings", summary["warning_count"])
+    render_run_status(
+        title="Ready for review" if result.is_valid else "Review required",
+        message=(
+            "No blocking validation errors were found."
+            if result.is_valid
+            else "The file loaded successfully, but some records need human review before relying on the data."
+        ),
+        state="ok" if result.is_valid else "warn",
+    )
+    render_metric_row(
+        [
+            ("Rows checked", summary["rows_checked"]),
+            ("Issues found", summary["issues_found"]),
+            ("Errors", summary["error_count"]),
+            ("Warnings", summary["warning_count"]),
+        ]
+    )
+    render_priority_overview(findings_frame, transaction_review)
 
-    if result.is_valid:
-        st.success("Validation completed with no blocking errors.")
-    else:
-        st.warning("Validation completed with errors that need review.")
+    st.download_button(
+        "Download audit workbook",
+        data=audit_workbook,
+        file_name="audit_review_pack.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
-    tab_review, tab_transactions, tab_issues, tab_audit = st.tabs(["Review", "Transactions", "Issues", "Audit Pack"])
+    tab_review, tab_audit, tab_evidence = st.tabs(["Review queue", "Audit pack", "Evidence"])
 
     with tab_review:
         render_review_queue(findings_frame, transaction_review, key_prefix="single")
 
-    with tab_transactions:
-        st.dataframe(result.transactions, use_container_width=True)
-        st.caption("Canonical dataframe passed to the pure Python validation engine.")
-
-    with tab_issues:
-        st.dataframe(display_findings(sort_by_review_priority(findings_frame)), use_container_width=True)
+    with tab_audit:
+        st.write("Run summary")
+        st.dataframe(clean_display_frame(summary_frame), use_container_width=True, hide_index=True)
+        st.write("Schema mapping")
+        st.dataframe(clean_display_frame(schema_result.mapping_dataframe()), use_container_width=True, hide_index=True)
         if not issue_counts_frame.empty:
-            st.write("Issue counts")
-            st.dataframe(issue_counts_frame, use_container_width=True)
+            st.write("Issue counts by rule")
+            st.dataframe(clean_display_frame(issue_counts_frame), use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download audit workbook",
+            data=audit_workbook,
+            file_name="audit_review_pack.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="single_audit_pack_download",
+        )
+
+    with tab_evidence:
+        with st.expander("Detailed findings", expanded=True):
+            st.dataframe(display_findings(sort_by_review_priority(findings_frame)), use_container_width=True, hide_index=True)
         issue_csv = issues_frame.to_csv(index=False).encode("utf-8")
         st.download_button(
             "Download issues CSV",
@@ -193,52 +318,54 @@ def render_results(result, schema_result, summary: dict[str, object]) -> None:
             file_name="validation_issues.csv",
             mime="text/csv",
         )
-
-    with tab_audit:
-        st.dataframe(summary_frame, use_container_width=True)
-        st.write("Schema mapping")
-        st.dataframe(schema_result.mapping_dataframe(), use_container_width=True)
-        st.download_button(
-            "Download audit workbook",
-            data=audit_workbook,
-            file_name="audit_review_pack.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        with st.expander("Canonical transaction data"):
+            st.dataframe(clean_display_frame(result.transactions), use_container_width=True, hide_index=True)
+            st.caption("This is the cleaned and mapped dataframe passed to the validation engine.")
 
 
 def render_multi_file_reconciliation(profiles) -> None:
-    st.caption(
-        "Upload a transaction file and optional reference files. Vendors, beneficiaries, "
-        "and budget files are reconciled when available."
+    st.markdown(
+        "Upload transactions plus any available reference files. The transaction file is required; "
+        "vendor, beneficiary, and budget files improve the review by checking whether payments match approved records."
     )
 
-    transaction_file = st.file_uploader(
-        "Transactions",
-        type=["csv", "xlsx", "xls"],
-        key="phase2_transactions",
-    )
-    vendor_file = st.file_uploader(
-        "Vendors / suppliers",
-        type=["csv", "xlsx", "xls"],
-        key="phase2_vendors",
-    )
-    beneficiary_file = st.file_uploader(
-        "Beneficiaries",
-        type=["csv", "xlsx", "xls"],
-        key="phase2_beneficiaries",
-    )
-    budget_file = st.file_uploader(
-        "Budget",
-        type=["csv", "xlsx", "xls"],
-        key="phase2_budget",
-    )
+    upload_columns = st.columns(2)
+    with upload_columns[0]:
+        transaction_file = st.file_uploader(
+            "Transactions (required)",
+            type=["csv", "xlsx", "xls"],
+            key="phase2_transactions",
+        )
+        beneficiary_file = st.file_uploader(
+            "Beneficiaries (optional)",
+            type=["csv", "xlsx", "xls"],
+            key="phase2_beneficiaries",
+        )
+    with upload_columns[1]:
+        vendor_file = st.file_uploader(
+            "Vendors / suppliers (optional)",
+            type=["csv", "xlsx", "xls"],
+            key="phase2_vendors",
+        )
+        budget_file = st.file_uploader(
+            "Budget (optional)",
+            type=["csv", "xlsx", "xls"],
+            key="phase2_budget",
+        )
 
     if transaction_file is None:
-        st.info("Upload a transaction file to start multi-file reconciliation.")
+        render_empty_start(
+            "Start with transactions",
+            [
+                "Add the transaction export first; reference files can be added after.",
+                "Vendor files help spot unknown or weakly matched counterparties.",
+                "Beneficiary and budget files add entitlement and budget-line checks when available.",
+            ],
+        )
         return
 
     if vendor_file is None and beneficiary_file is None and budget_file is None:
-        st.warning("Upload at least one reference file, such as vendors, beneficiaries, or budget.")
+        st.warning("Add at least one reference file so the app can reconcile transactions against approved records.")
         return
 
     adjust_mappings = st.checkbox("Review or adjust schema mappings", value=False)
@@ -288,9 +415,13 @@ def render_multi_file_reconciliation(profiles) -> None:
 
         blocked = blocked_dataset_names(schema_results)
         if blocked:
-            st.write("Mapping summary")
-            st.dataframe(mapping_summary, use_container_width=True)
-            st.error("Fix required schema mappings before reconciliation can run: " + ", ".join(blocked))
+            render_run_status(
+                title="Mapping required",
+                message="Some files could not be understood yet. Fix the required mappings before reconciliation can run.",
+                state="error",
+            )
+            st.dataframe(display_mapping_summary(mapping_summary), use_container_width=True, hide_index=True)
+            st.error("Needs mapping: " + ", ".join(blocked))
             return
 
         bundle = build_audit_bundle(prepared_datasets)
@@ -307,11 +438,24 @@ def render_multi_file_reconciliation(profiles) -> None:
     review_findings = review_findings_dataframe(combined_issues)
     transaction_review = score_transactions(audit_result.transaction_validation.transactions, combined_issues)
 
-    metric_columns = st.columns(4)
-    metric_columns[0].metric("Transactions", bundle.transactions.row_count)
-    metric_columns[1].metric("Transaction Issues", len(transaction_issues))
-    metric_columns[2].metric("Reference Issues", len(reference_issues))
-    metric_columns[3].metric("Skipped Checks", len(skipped))
+    render_run_status(
+        title="Ready for review" if combined_issues.empty else "Review required",
+        message=(
+            "The uploaded files reconciled with no audit issues found."
+            if combined_issues.empty
+            else "The uploaded files were processed successfully. Review the exceptions below before relying on the results."
+        ),
+        state="ok" if combined_issues.empty else "warn",
+    )
+    render_metric_row(
+        [
+            ("Transactions", bundle.transactions.row_count),
+            ("Transaction issues", len(transaction_issues)),
+            ("Reference issues", len(reference_issues)),
+            ("Skipped checks", len(skipped)),
+        ]
+    )
+    render_priority_overview(review_findings, transaction_review, skipped_count=len(skipped))
 
     st.download_button(
         "Download audit workbook",
@@ -320,21 +464,16 @@ def render_multi_file_reconciliation(profiles) -> None:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-    if combined_issues.empty:
-        st.success("No audit issues found in the uploaded files.")
-    else:
-        st.warning("Audit completed with issues for review.")
-
     render_review_queue(review_findings, transaction_review, key_prefix="multi")
 
     with st.expander("Dataset and mapping details"):
-        st.dataframe(bundle.dataset_summary(), use_container_width=True)
+        st.dataframe(display_dataset_summary(bundle.dataset_summary()), use_container_width=True, hide_index=True)
         st.write("Mapping summary")
-        st.dataframe(mapping_summary, use_container_width=True)
+        st.dataframe(display_mapping_summary(mapping_summary), use_container_width=True, hide_index=True)
 
     with st.expander("CSV downloads and detailed issue tables"):
         st.write("Transaction issues")
-        st.dataframe(transaction_issues, use_container_width=True)
+        st.dataframe(clean_display_frame(transaction_issues), use_container_width=True, hide_index=True)
         st.download_button(
             "Download transaction issues CSV",
             data=transaction_issues.to_csv(index=False).encode("utf-8"),
@@ -343,7 +482,7 @@ def render_multi_file_reconciliation(profiles) -> None:
         )
 
         st.write("Reference issues")
-        st.dataframe(reference_issues, use_container_width=True)
+        st.dataframe(clean_display_frame(reference_issues), use_container_width=True, hide_index=True)
         st.download_button(
             "Download reference issues CSV",
             data=reference_issues.to_csv(index=False).encode("utf-8"),
@@ -352,7 +491,7 @@ def render_multi_file_reconciliation(profiles) -> None:
         )
 
         st.write("Skipped checks")
-        st.dataframe(skipped, use_container_width=True)
+        st.dataframe(clean_display_frame(skipped), use_container_width=True, hide_index=True)
 
         st.download_button(
             "Download all issues CSV",
@@ -363,16 +502,16 @@ def render_multi_file_reconciliation(profiles) -> None:
 
     with st.expander("Input data previews"):
         st.write("Transactions")
-        st.dataframe(bundle.transactions.dataframe, use_container_width=True)
+        st.dataframe(clean_display_frame(bundle.transactions.dataframe), use_container_width=True, hide_index=True)
         if bundle.vendors:
             st.write("Vendors / suppliers")
-            st.dataframe(bundle.vendors.dataframe, use_container_width=True)
+            st.dataframe(clean_display_frame(bundle.vendors.dataframe), use_container_width=True, hide_index=True)
         if bundle.beneficiaries:
             st.write("Beneficiaries")
-            st.dataframe(bundle.beneficiaries.dataframe, use_container_width=True)
+            st.dataframe(clean_display_frame(bundle.beneficiaries.dataframe), use_container_width=True, hide_index=True)
         if bundle.budget:
             st.write("Budget")
-            st.dataframe(bundle.budget.dataframe, use_container_width=True)
+            st.dataframe(clean_display_frame(bundle.budget.dataframe), use_container_width=True, hide_index=True)
 
 
 def render_dataset_mapping(
@@ -460,17 +599,29 @@ def render_cleaning_notice(cleaning_result: CleaningResult | None) -> None:
         return
 
     if cleaning_result.applied:
-        st.info("Bank-style export cleanup was applied before schema mapping.")
-        with st.expander("Cleaning details"):
+        with st.expander("Data preparation applied"):
+            st.write("Bank-style export cleanup was applied before schema mapping.")
             if cleaning_result.transformations:
                 st.write("Transformations")
-                st.dataframe(pd.DataFrame({"transformation": cleaning_result.transformations}), use_container_width=True)
+                st.dataframe(
+                    pd.DataFrame({"transformation": cleaning_result.transformations}),
+                    use_container_width=True,
+                    hide_index=True,
+                )
             if cleaning_result.dropped_rows:
                 st.write("Dropped source rows")
-                st.dataframe(pd.DataFrame({"source_row_number": cleaning_result.dropped_rows}), use_container_width=True)
+                st.dataframe(
+                    pd.DataFrame({"source_row_number": cleaning_result.dropped_rows}),
+                    use_container_width=True,
+                    hide_index=True,
+                )
             if cleaning_result.warnings:
                 st.write("Warnings")
-                st.dataframe(pd.DataFrame({"warning": cleaning_result.warnings}), use_container_width=True)
+                st.dataframe(
+                    pd.DataFrame({"warning": cleaning_result.warnings}),
+                    use_container_width=True,
+                    hide_index=True,
+                )
         return
 
     if cleaning_result.warnings:
@@ -480,15 +631,20 @@ def render_cleaning_notice(cleaning_result: CleaningResult | None) -> None:
 def display_findings(findings: pd.DataFrame) -> pd.DataFrame:
     if findings.empty:
         return findings
-    return findings[[column for column in FINDING_DISPLAY_COLUMNS if column in findings.columns]]
+    display = findings[[column for column in FINDING_DISPLAY_COLUMNS if column in findings.columns]]
+    return clean_display_frame(display)
 
 
 def display_transaction_review(transaction_review: pd.DataFrame) -> pd.DataFrame:
     if transaction_review.empty:
         return transaction_review
-    return transaction_review[
+    display = transaction_review[
         [column for column in TRANSACTION_REVIEW_DISPLAY_COLUMNS if column in transaction_review.columns]
     ]
+    display = clean_display_frame(display)
+    if "review_priority_band" in display:
+        display["review_priority_band"] = display["review_priority_band"].astype("string").str.title()
+    return display
 
 
 def render_review_queue(
@@ -496,13 +652,22 @@ def render_review_queue(
     transaction_review: pd.DataFrame,
     key_prefix: str,
 ) -> None:
-    st.write("Findings")
-    filtered_findings = review_findings_with_filters(findings, key_prefix=key_prefix)
-    st.dataframe(display_findings(filtered_findings), use_container_width=True)
+    st.subheader("Exceptions needing review")
+    if findings.empty:
+        st.success("No validation or reconciliation findings need review.")
+    else:
+        with st.expander("Filter findings"):
+            filtered_findings = review_findings_with_filters(findings, key_prefix=key_prefix)
+        st.dataframe(display_findings(filtered_findings), use_container_width=True, hide_index=True)
 
-    st.write("Transaction review")
-    filtered_transactions = transaction_review_with_filters(transaction_review, key_prefix=key_prefix)
-    st.dataframe(display_transaction_review(filtered_transactions), use_container_width=True)
+    st.subheader("Transactions by review priority")
+    if transaction_review.empty:
+        st.info("No transaction review rows are available.")
+        return
+
+    with st.expander("Filter transactions"):
+        filtered_transactions = transaction_review_with_filters(transaction_review, key_prefix=key_prefix)
+    st.dataframe(display_transaction_review(filtered_transactions), use_container_width=True, hide_index=True)
 
 
 def review_findings_with_filters(findings: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
