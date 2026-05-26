@@ -17,16 +17,17 @@ TRANSACTION_ID_KEYS = {
     "ref no",
     "reference",
     "reference no",
+    "transaction_id",
     "transaction id",
     "transaction ref",
     "txn ref",
 }
-DATE_KEYS = {"date", "value date", "transaction date", "txn date", "posting date"}
+DATE_KEYS = {"date", "value date", "transaction_date", "transaction date", "txn date", "posting date"}
 AMOUNT_KEYS = {"amount", "transaction amount", "value"}
 DEBIT_KEYS = {"debit", "debit amount", "withdrawal", "money out", "paid out"}
 CREDIT_KEYS = {"credit", "credit amount", "deposit", "money in", "paid in"}
 CURRENCY_KEYS = {"currency", "ccy"}
-ACCOUNT_KEYS = {"account", "account id", "account number", "account no"}
+ACCOUNT_KEYS = {"account", "account_id", "account id", "account number", "account no"}
 NARRATION_KEYS = {
     "narration",
     "description",
@@ -162,10 +163,16 @@ def _body_dataframe(
     dropped_rows = []
     width = len(source_columns)
 
+    footer_seen = False
     for source_row_number, values in rows:
         padded = [*values[:width], *([""] * max(width - len(values), 0))]
-        if _is_blank_row(padded) or _is_footer_row(padded):
+        if footer_seen:
             dropped_rows.append(source_row_number)
+            continue
+        is_footer = _is_footer_row(padded)
+        if _is_blank_row(padded) or is_footer:
+            dropped_rows.append(source_row_number)
+            footer_seen = is_footer
             continue
         record = dict(zip(source_columns, padded))
         record[SOURCE_ROW_NUMBER] = source_row_number

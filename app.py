@@ -9,10 +9,19 @@ from transaction_audit.audit import (
     review_findings_dataframe,
     summary_dataframe,
 )
-from transaction_audit.bundle_workflow import run_bundle_audit
-from transaction_audit.cleaning import CleaningResult, clean_transaction_export
+from transaction_audit.bundle_workflow import (
+    blocked_dataset_names,
+    build_audit_bundle,
+    best_matching_profile,
+    mapping_status_row,
+    maybe_clean_transactions,
+    profiles_for_dataset,
+    resolve_dataset_mapping,
+    run_bundle_audit,
+)
+from transaction_audit.cleaning import CleaningResult
 from transaction_audit.config import REQUIRED_COLUMNS
-from transaction_audit.datasets import AuditBundle, AuditDataset, DATASET_DEFINITIONS, DatasetType
+from transaction_audit.datasets import AuditDataset, DATASET_DEFINITIONS, DatasetType
 from transaction_audit.ingestion import load_dataset, load_transactions
 from transaction_audit.profiles import delete_import_profile, list_import_profiles, profiles_dataframe, save_import_profile
 from transaction_audit.schema import apply_schema, source_mapping_from_canonical
@@ -223,7 +232,9 @@ def render_multi_file_reconciliation(profiles) -> None:
             if dataset_type == DatasetType.TRANSACTIONS:
                 raw_dataframe, cleaning_result = maybe_clean_transactions(raw_dataframe)
                 render_cleaning_notice(cleaning_result)
-            schema_result, selected_profile = resolve_dataset_mapping(dataset_type, raw_dataframe, profiles)
+            mapping_resolution = resolve_dataset_mapping(dataset_type, raw_dataframe, profiles)
+            schema_result = mapping_resolution.schema_result
+            selected_profile = mapping_resolution.selected_profile
 
             if adjust_mappings or not schema_result.has_required_schema:
                 schema_result, selected_profile = render_dataset_mapping(
@@ -244,23 +255,14 @@ def render_multi_file_reconciliation(profiles) -> None:
 
         mapping_summary = pd.DataFrame(mapping_rows)
 
-        blocked = [
-            DATASET_DEFINITIONS[dataset_type].display_name
-            for dataset_type, schema_result in schema_results.items()
-            if not schema_result.has_required_schema
-        ]
+        blocked = blocked_dataset_names(schema_results)
         if blocked:
             st.write("Mapping summary")
             st.dataframe(mapping_summary, use_container_width=True)
             st.error("Fix required schema mappings before reconciliation can run: " + ", ".join(blocked))
             return
 
-        bundle = AuditBundle(
-            transactions=prepared_datasets[DatasetType.TRANSACTIONS],
-            vendors=prepared_datasets.get(DatasetType.VENDORS),
-            beneficiaries=prepared_datasets.get(DatasetType.BENEFICIARIES),
-            budget=prepared_datasets.get(DatasetType.BUDGET),
-        )
+        bundle = build_audit_bundle(prepared_datasets)
         audit_result = run_bundle_audit(bundle)
         audit_workbook = build_bundle_audit_workbook(audit_result, schema_results)
     except Exception as exc:
@@ -420,21 +422,6 @@ def render_dataset_mapping(
     return schema_result, selected_profile
 
 
-def maybe_clean_transactions(dataframe: pd.DataFrame) -> tuple[pd.DataFrame, CleaningResult | None]:
-    if build_mapping_plan(dataframe, dataset_type=DatasetType.TRANSACTIONS).auto_schema.has_required_schema:
-        return dataframe, None
-
-    cleaning_result = clean_transaction_export(dataframe)
-    if not cleaning_result.applied:
-        return dataframe, cleaning_result
-
-    cleaned_plan = build_mapping_plan(cleaning_result.dataframe, dataset_type=DatasetType.TRANSACTIONS)
-    if cleaned_plan.auto_schema.has_required_schema:
-        return cleaning_result.dataframe, cleaning_result
-
-    return dataframe, cleaning_result
-
-
 def render_cleaning_notice(cleaning_result: CleaningResult | None) -> None:
     if cleaning_result is None:
         return
@@ -455,48 +442,6 @@ def render_cleaning_notice(cleaning_result: CleaningResult | None) -> None:
 
     if cleaning_result.warnings:
         st.caption("Cleaning not applied: " + "; ".join(cleaning_result.warnings))
-
-
-def best_matching_profile(raw_dataframe, dataset_type: DatasetType, profiles):
-    if build_mapping_plan(raw_dataframe, dataset_type=dataset_type).auto_schema.has_required_schema:
-        return None
-
-    for profile in profiles:
-        try:
-            plan = build_mapping_plan(raw_dataframe, profile, dataset_type=dataset_type)
-            result = apply_mapping_plan(raw_dataframe, plan.canonical_to_source, dataset_type=dataset_type)
-        except ValueError:
-            continue
-        if result.has_required_schema:
-            return profile
-    return None
-
-
-def resolve_dataset_mapping(dataset_type: DatasetType, raw_dataframe: pd.DataFrame, profiles):
-    available_profiles = profiles_for_dataset(profiles, dataset_type)
-    selected_profile = best_matching_profile(raw_dataframe, dataset_type, available_profiles)
-    mapping_plan = build_mapping_plan(raw_dataframe, selected_profile, dataset_type=dataset_type)
-    schema_result = apply_mapping_plan(
-        raw_dataframe,
-        mapping_plan.canonical_to_source,
-        dataset_type=dataset_type,
-    )
-    return schema_result, selected_profile
-
-
-def mapping_status_row(dataset_type: DatasetType, source_name: str, schema_result, selected_profile) -> dict[str, object]:
-    return {
-        "dataset": dataset_type.value,
-        "source_name": source_name,
-        "status": "ready" if schema_result.has_required_schema else "needs mapping",
-        "missing_required": ", ".join(schema_result.missing_required),
-        "mapped_columns": len(schema_result.source_to_canonical),
-        "profile": selected_profile.display_name if selected_profile else "Auto-detect",
-    }
-
-
-def profiles_for_dataset(profiles, dataset_type: DatasetType):
-    return [profile for profile in profiles if profile.dataset_type == dataset_type.value]
 
 
 def display_findings(findings: pd.DataFrame) -> pd.DataFrame:

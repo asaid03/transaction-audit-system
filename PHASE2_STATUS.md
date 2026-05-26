@@ -1,6 +1,6 @@
 # Phase 2 Status
 
-Last updated: 2026-05-25
+Last updated: 2026-05-26
 
 ## Status
 
@@ -24,8 +24,9 @@ Phase 2 turned the project from a single-file transaction validator into a multi
 - Multi-file Streamlit workflow.
 - Reviewer-friendly audit workbook.
 - Audit rules/risk reference in `AUDIT_RULES.md`.
-- Conservative bank/export cleaning when normal schema detection fails.
+- Conservative bank/export cleaning when needed, including schema-ready files with footer/trailer rows.
 - Realistic messy transaction fixtures for bank, mobile-money, and ledger exports.
+- Bundle mapping/cleaning orchestration moved into `transaction_audit/bundle_workflow.py` so Streamlit stays closer to a UI adapter.
 
 ## Current Multi-File Checks
 
@@ -62,7 +63,7 @@ Multi-file mode supports:
 - beneficiaries upload
 - budget upload
 - automatic schema detection
-- bank/export cleaning fallback for transaction files
+- bank/export cleaning for transaction files when cleanup is needed
 - manual mapping only when needed or requested
 - audit workbook download
 - reviewer-facing findings table
@@ -101,7 +102,7 @@ Multi-file workbook sheets:
 Latest verified state:
 
 ```text
-Ran 70 tests
+Ran 73 tests
 OK
 ```
 
