@@ -2,7 +2,9 @@ import unittest
 
 import pandas as pd
 
+from transaction_audit.cleaning import clean_transaction_export
 from transaction_audit.datasets import AuditBundle, AuditDataset, DatasetType
+from transaction_audit.ingestion import load_dataset
 from transaction_audit.reconciliation import reconcile_bundle
 
 
@@ -66,6 +68,26 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual(["warning"], issues["severity"].tolist())
         self.assertEqual(["VEN-001"], issues["related_record_id"].tolist())
         self.assertIn("Possible vendor match", issues.loc[0, "message"])
+
+    def test_realistic_bank_narration_supports_vendor_fuzzy_matching(self):
+        raw = load_dataset("sample_data/realistic_bank_export_29.csv")
+        cleaned = clean_transaction_export(raw).dataframe
+        transactions = AuditDataset(DatasetType.TRANSACTIONS, cleaned, "realistic_bank_export_29.csv")
+        vendors = _dataset(
+            DatasetType.VENDORS,
+            {
+                "vendor_id": ["VEN-001", "VEN-002", "VEN-003"],
+                "vendor_name": ["Somali Medical Supplies", "HORMUUD TELECOM LTD", "Logistics Partner"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, vendors=vendors))
+        issues = result.issues_dataframe()
+        possible_matches = issues[issues["issue_type"].eq("possible_vendor_match")]
+
+        self.assertIn("VEN-001", possible_matches["related_record_id"].tolist())
+        self.assertIn("Somali Medical Supplies", " ".join(possible_matches["message"].tolist()))
+        self.assertIn("unknown_vendor_reference", issues["issue_type"].tolist())
 
     def test_vendor_reference_without_fuzzy_match_remains_unknown(self):
         transactions = _dataset(

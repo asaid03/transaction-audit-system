@@ -9,6 +9,7 @@ Initial scoring slice implemented on `phase-3-review-priority`:
 - `transaction_audit/risk.py` scores existing validation and reconciliation issues.
 - `review_findings` includes deterministic score, band, and drivers.
 - Workbooks include a `transaction_review` sheet for row-level prioritisation.
+- Bank-style narration text is parsed into cleaner counterparty values while preserving the full narration in `description`.
 - Determinism coverage is in `tests/test_risk.py`.
 
 ## Goal

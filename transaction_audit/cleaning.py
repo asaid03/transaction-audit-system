@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
+from transaction_audit.narration import extract_counterparties_from_narration
 from transaction_audit.parsing import parse_amounts
 from transaction_audit.schema import normalize_column_key
 
@@ -199,8 +200,9 @@ def _canonical_transaction_frame(
     cleaned["account_id"] = _column_or_default(source, account_column, account_id)
     cleaned["amount"] = _amounts(source)
     cleaned["currency"] = _column_or_default(source, currency_column, currency)
-    cleaned["counterparty"] = _column_or_empty(source, narration_column)
-    cleaned["description"] = _column_or_empty(source, narration_column)
+    narration = _column_or_empty(source, narration_column)
+    cleaned["counterparty"] = extract_counterparties_from_narration(narration)
+    cleaned["description"] = narration
     if balance_column:
         cleaned["balance"] = source[balance_column]
     cleaned[SOURCE_ROW_NUMBER] = source[SOURCE_ROW_NUMBER].astype(int)
