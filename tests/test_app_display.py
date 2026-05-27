@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from app import clean_display_frame, display_dataset_summary, display_transaction_review
+from transaction_audit.ui.display import clean_display_frame, display_dataset_summary, display_transaction_review
 
 
 class AppDisplayTest(unittest.TestCase):
