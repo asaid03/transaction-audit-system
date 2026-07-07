@@ -91,6 +91,11 @@ ISSUE_GUIDANCE = {
         "why_it_matters": "The payment resembles another transaction by date, amount, and counterparty.",
         "recommended_action": "Compare the matching payments and confirm whether both should exist.",
     },
+    "missing_invoice_reference": {
+        "finding": "Invoice or reference is missing",
+        "why_it_matters": "Missing invoice evidence makes it harder to confirm the payment purpose and supporting documentation.",
+        "recommended_action": "Request the invoice, voucher, or payment reference and document the review outcome.",
+    },
     "zero_amount": {
         "finding": "Zero amount transaction",
         "why_it_matters": "A zero amount entry may be a reversal, placeholder, or export error.",

@@ -45,6 +45,7 @@ ISSUE_SIGNALS = {
     "possible_duplicate_payment": RiskSignal(70, "high", "Possible duplicate payment"),
     "large_amount": RiskSignal(65, "medium", "Amount exceeds configured threshold"),
     "unsupported_currency": RiskSignal(60, "medium", "Unsupported currency"),
+    "missing_invoice_reference": RiskSignal(55, "medium", "Invoice/reference field is missing"),
     "possible_vendor_match": RiskSignal(45, "medium", "Counterparty only matched vendor file fuzzily"),
     "zero_amount": RiskSignal(35, "low", "Zero amount transaction"),
 }

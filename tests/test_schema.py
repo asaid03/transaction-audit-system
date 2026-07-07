@@ -128,3 +128,21 @@ class SchemaTests(unittest.TestCase):
 
         self.assertEqual("supplier_code", plan.canonical_to_source["vendor_id"])
         self.assertEqual("recipient_code", plan.canonical_to_source["beneficiary_id"])
+
+    def test_transaction_mapping_can_include_invoice_reference(self):
+        dataframe = pd.DataFrame(
+            columns=[
+                "txn_ref",
+                "date",
+                "acc_id",
+                "amt",
+                "ccy",
+                "counterparty_name",
+                "invoice_no",
+            ]
+        )
+
+        plan = build_mapping_plan(dataframe, dataset_type=DatasetType.TRANSACTIONS)
+
+        self.assertTrue(plan.auto_schema.has_required_schema)
+        self.assertEqual("invoice_no", plan.canonical_to_source["invoice_reference"])

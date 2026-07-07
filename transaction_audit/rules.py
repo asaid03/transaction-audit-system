@@ -135,6 +135,23 @@ def check_currencies(
     return issues
 
 
+def check_missing_invoice_references(original: pd.DataFrame, checked: pd.DataFrame) -> list[ValidationIssue]:
+    if "invoice_reference" not in original:
+        return []
+
+    return [
+        make_issue(
+            row_number=position,
+            row=row,
+            field="invoice_reference",
+            issue_type="missing_invoice_reference",
+            severity="warning",
+            message="Invoice/reference field is blank.",
+        )
+        for position, row in rows_matching(checked, _missing_mask(original["invoice_reference"]))
+    ]
+
+
 def check_duplicate_transaction_ids(checked: pd.DataFrame) -> list[ValidationIssue]:
     issues = []
     duplicate_mask = (
@@ -178,6 +195,18 @@ def check_possible_duplicate_payments(
         if group["transaction_id"].nunique() < 2:
             continue
 
+        if "invoice_reference" in group:
+            invoice_group_candidates = group.assign(
+                _invoice_reference=group["invoice_reference"].astype("string").str.strip()
+            )
+            invoice_group_candidates = invoice_group_candidates[
+                invoice_group_candidates["_invoice_reference"].notna()
+                & invoice_group_candidates["_invoice_reference"].ne("")
+            ]
+            for _, invoice_group in invoice_group_candidates.groupby("_invoice_reference", dropna=False):
+                if invoice_group["transaction_id"].nunique() >= 2 and len(invoice_group) > 1:
+                    flagged_indexes.update(invoice_group.index.tolist())
+
         ordered = group.sort_values("transaction_date")
         ordered_indexes = list(ordered.index)
         ordered_dates = ordered["transaction_date"].tolist()
@@ -204,8 +233,9 @@ def check_possible_duplicate_payments(
             issue_type="possible_duplicate_payment",
             severity="warning",
             message=(
-                "Possible duplicate payment: same account, counterparty, amount, "
-                f"and currency within {config.duplicate_payment_window_days} days."
+                "Possible duplicate payment: same invoice reference or same account, "
+                "counterparty, amount, and currency within "
+                f"{config.duplicate_payment_window_days} days."
             ),
         )
         for position, row in rows_matching(checked, pd.Series(duplicate_payment_mask, index=checked.index))

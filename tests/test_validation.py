@@ -227,3 +227,62 @@ class ValidationTests(unittest.TestCase):
         issue_types = result.issues_dataframe()["issue_type"].tolist()
 
         self.assertNotIn("possible_duplicate_payment", issue_types)
+
+    def test_flags_missing_invoice_reference_when_invoice_column_exists(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "transaction_date": ["2024-03-15", "2024-03-16"],
+                "account_id": ["ACC-1", "ACC-1"],
+                "amount": ["250.00", "300.00"],
+                "currency": ["GBP", "GBP"],
+                "counterparty": ["Vendor A", "Vendor B"],
+                "invoice_reference": ["INV-001", ""],
+            }
+        )
+
+        result = validate_transactions(dataframe)
+        issues = result.issues_dataframe()
+
+        self.assertIn("missing_invoice_reference", issues["issue_type"].tolist())
+        missing_invoice = issues[issues["issue_type"].eq("missing_invoice_reference")]
+        self.assertEqual([3], missing_invoice["row_number"].tolist())
+        self.assertEqual(["warning"], missing_invoice["severity"].tolist())
+
+    def test_does_not_require_invoice_reference_column(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001"],
+                "transaction_date": ["2024-03-15"],
+                "account_id": ["ACC-1"],
+                "amount": ["250.00"],
+                "currency": ["GBP"],
+                "counterparty": ["Vendor A"],
+            }
+        )
+
+        result = validate_transactions(dataframe)
+        issue_types = result.issues_dataframe()["issue_type"].tolist()
+
+        self.assertNotIn("missing_invoice_reference", issue_types)
+
+    def test_possible_duplicate_payments_use_matching_invoice_reference(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "transaction_date": ["2024-03-15", "2024-03-25"],
+                "account_id": ["ACC-1", "ACC-1"],
+                "amount": ["250.00", "250.00"],
+                "currency": ["GBP", "GBP"],
+                "counterparty": ["Vendor A", "Vendor A"],
+                "invoice_reference": ["INV-001", "INV-001"],
+            }
+        )
+
+        result = validate_transactions(dataframe)
+        issues = result.issues_dataframe()
+
+        self.assertEqual(
+            ["possible_duplicate_payment", "possible_duplicate_payment"],
+            issues["issue_type"].tolist(),
+        )

@@ -26,6 +26,7 @@ TRANSACTION_REVIEW_DISPLAY_COLUMNS = [
     "transaction_id",
     "transaction_date",
     "account_id",
+    "invoice_reference",
     "amount",
     "currency",
     "counterparty",

@@ -40,8 +40,9 @@ These checks run against the transactions file.
 | Large amount | `large_amount` | warning | Amount meets/exceeds the configured large-amount threshold. | Check approval evidence and supporting documents. |
 | Date parsing | `invalid_date` | error | Transaction date cannot be parsed. | Correct the date format and rerun the audit. |
 | Currency scope | `unsupported_currency` | warning | Currency is outside the configured allowed list. | Confirm whether the currency is valid for this audit. |
+| Missing invoice/reference | `missing_invoice_reference` | warning | Optional invoice/reference column exists but is blank for the transaction. | Request the invoice, voucher, or payment reference and document the review outcome. |
 | Duplicate transaction ID | `duplicate_transaction_id` | error | Same transaction ID appears more than once. | Check whether rows are duplicates, corrections, or separate payments with wrong IDs. |
-| Possible duplicate payment | `possible_duplicate_payment` | warning | Same account, counterparty, amount, and currency appears within the configured date window under different IDs. | Compare the payments and confirm both should exist. |
+| Possible duplicate payment | `possible_duplicate_payment` | warning | Same invoice reference, or same account/counterparty/amount/currency within the configured date window, appears under different transaction IDs. | Compare the payments and confirm both should exist. |
 
 ## Multi-File Reconciliation Rules
 
