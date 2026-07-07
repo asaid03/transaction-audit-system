@@ -12,6 +12,8 @@ Phase 3 review-priority scoring is implemented on `phase-3-review-priority`:
 - Bank-style narration text is parsed into cleaner counterparty values while preserving the full narration in `description`.
 - Determinism coverage is in `tests/test_risk.py`.
 - The Streamlit UI has been refactored into smaller UI modules and is acceptable as a prototype UI adapter, not the long-term frontend.
+- `invoice_reference` is supported as an optional transaction field, with missing invoice/reference warnings when that field exists.
+- Static and population-relative large-payment rules are both implemented.
 
 ## Goal
 
@@ -65,6 +67,8 @@ Medium-priority examples:
 
 - possible fuzzy vendor match
 - large amount transaction
+- population-relative large amount transaction
+- missing invoice/reference value
 - unsupported currency
 
 Low-priority examples:
@@ -85,7 +89,7 @@ Possible duplicate payment is currently treated as high because duplicate-lookin
 
 ## Next
 
-Before adding ML, keep the input contract simple and transaction-focused:
+Phase 3 is ready to hand off to Phase 4 ML/anomaly detection. Keep the Phase 4 input contract simple and transaction-focused:
 
 - do not add employee or chart-of-account support just to satisfy one synthetic file shape
 - keep ML/anomaly detection separate from validation, reconciliation, and scoring

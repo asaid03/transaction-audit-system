@@ -11,7 +11,7 @@ Build an explainable financial audit prototype that can:
 - produce reviewer-friendly audit outputs,
 - grow in small, tested phases.
 
-The current completed scope is Phase 3 review-priority scoring: multi-file transaction, vendor, beneficiary, and budget reconciliation; conservative cleaning for realistic bank/mobile-money/ledger transaction exports; and deterministic score, band, and driver output for exception review.
+The current completed scope is Phase 3 review-priority scoring: multi-file transaction, vendor, beneficiary, and budget reconciliation; conservative cleaning for realistic bank/mobile-money/ledger transaction exports; invoice/reference checks; static and population-relative large-payment checks; and deterministic score, band, and driver output for exception review.
 
 ## Think Before Coding
 

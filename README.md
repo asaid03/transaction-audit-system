@@ -28,11 +28,12 @@ Checks include:
 - missing required columns
 - missing required values
 - invalid amounts
-- zero or large amounts
+- zero, static-threshold large, and population-relative large amounts
 - invalid dates
 - unsupported currencies
 - duplicate transaction IDs
 - possible duplicate payments
+- missing invoice/reference values when an invoice/reference column is present
 
 Bank-style CSV exports with preamble rows, debit/credit split columns, narration fields, and footer totals can be cleaned before validation. See the realistic fixtures in `sample_data/realistic_bank_export.csv`, `sample_data/realistic_bank_export_29.csv`, `sample_data/realistic_mobile_money_export.csv`, and `sample_data/realistic_ledger_export.csv`.
 
@@ -94,7 +95,7 @@ See [AUDIT_RULES.md](AUDIT_RULES.md) for the current rule list, risk levels, iss
 
 ## AI Agent Guidance
 
-See [AGENTS.md](AGENTS.md) for repo-specific instructions for Codex, Claude, Cursor, and other coding agents. It captures the project rules around simplicity, surgical changes, testing, audit explainability, and the Phase 3 roadmap.
+See [AGENTS.md](AGENTS.md) for repo-specific instructions for Codex, Claude, Cursor, and other coding agents. It captures the project rules around simplicity, surgical changes, testing, audit explainability, and the current roadmap.
 
 ## Run Locally
 
