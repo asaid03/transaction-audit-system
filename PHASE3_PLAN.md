@@ -1,16 +1,17 @@
 # Phase 3 Plan
 
-Last updated: 2026-05-26
+Last updated: 2026-07-07
 
 ## Current Status
 
-Initial scoring slice implemented on `phase-3-review-priority`:
+Phase 3 review-priority scoring is implemented on `phase-3-review-priority`:
 
 - `transaction_audit/risk.py` scores existing validation and reconciliation issues.
 - `review_findings` includes deterministic score, band, and drivers.
 - Workbooks include a `transaction_review` sheet for row-level prioritisation.
 - Bank-style narration text is parsed into cleaner counterparty values while preserving the full narration in `description`.
 - Determinism coverage is in `tests/test_risk.py`.
+- The Streamlit UI has been refactored into smaller UI modules and is acceptable as a prototype UI adapter, not the long-term frontend.
 
 ## Goal
 
@@ -82,10 +83,18 @@ Possible duplicate payment is currently treated as high because duplicate-lookin
 5. Add score fields to the audit workbook. Done.
 6. Add minimal Streamlit sorting/filtering by priority. Done.
 
+## Next
+
+Before adding ML, keep the input contract simple and transaction-focused:
+
+- do not add employee or chart-of-account support just to satisfy one synthetic file shape
+- keep ML/anomaly detection separate from validation, reconciliation, and scoring
+- train or calibrate only against clearly labelled sample rows or reviewed outcomes
+- export ML signals as explainable review drivers, not fraud probabilities
+
 ## Later
 
 After the basic scoring layer is stable:
 
-- add round-number, weekend, month-end, and threshold-adjacent signals
-- redesign the UI around an exception review queue
+- add round-number, weekend, month-end, and threshold-adjacent rule signals
 - add review workflow and SQLite persistence only after review status/notes become useful

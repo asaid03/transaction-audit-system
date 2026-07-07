@@ -11,7 +11,7 @@ Build an explainable financial audit prototype that can:
 - produce reviewer-friendly audit outputs,
 - grow in small, tested phases.
 
-The current completed scope is Phase 2.5: multi-file transaction, vendor, beneficiary, and budget reconciliation plus conservative cleaning for realistic bank/mobile-money/ledger transaction exports. Phase 3 review-priority scoring has started with deterministic score, band, and driver output.
+The current completed scope is Phase 3 review-priority scoring: multi-file transaction, vendor, beneficiary, and budget reconciliation; conservative cleaning for realistic bank/mobile-money/ledger transaction exports; and deterministic score, band, and driver output for exception review.
 
 ## Think Before Coding
 
@@ -26,6 +26,7 @@ The current completed scope is Phase 2.5: multi-file transaction, vendor, benefi
 - Do not add speculative abstractions.
 - Do not introduce a rule registry, ML model, database, or React frontend unless explicitly planned.
 - Keep deterministic, explainable rules ahead of AI/ML scoring.
+- Keep near-term ML transaction-focused unless the user explicitly reopens employee or chart-of-account support.
 - If a change can be a focused function plus tests, do that before creating a framework.
 - Avoid generic "enterprise" features unless they support the current audit workflow.
 
