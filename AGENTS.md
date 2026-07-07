@@ -11,7 +11,7 @@ Build an explainable financial audit prototype that can:
 - produce reviewer-friendly audit outputs,
 - grow in small, tested phases.
 
-The current completed scope is Phase 3 review-priority scoring: multi-file transaction, vendor, beneficiary, and budget reconciliation; conservative cleaning for realistic bank/mobile-money/ledger transaction exports; invoice/reference checks; static and population-relative large-payment checks; and deterministic score, band, and driver output for exception review.
+Use `README.md` for the current product scope and `AUDIT_RULES.md` for the current implemented checks. Do not duplicate phase status in this file; phase notes go stale quickly.
 
 ## Think Before Coding
 
@@ -85,9 +85,9 @@ For non-trivial changes:
 - New findings should include a clear title, why it matters, and recommended action.
 - Do not let raw technical issue logs become the primary user-facing output.
 
-## Phase 3 Scoring Boundary
+## Review Scoring Boundary
 
-Phase 3 review-priority scoring:
+Review-priority scoring:
 
 ```text
 review_priority_band = worst signal wins
