@@ -27,6 +27,16 @@ class SchemaTests(unittest.TestCase):
             result.source_to_canonical,
         )
 
+    def test_infers_account_code_alias(self):
+        dataframe = pd.DataFrame(
+            columns=["transaction_id", "date", "account_code", "amount", "currency", "counterparty"]
+        )
+
+        result = apply_schema(dataframe)
+
+        self.assertTrue(result.has_required_schema)
+        self.assertEqual("account_id", result.source_to_canonical["account_code"])
+
     def test_normalizes_real_bank_export_column_names(self):
         self.assertEqual("debit", normalize_column_key("Debit (USD)"))
         self.assertEqual("credit", normalize_column_key("Credit (USD)"))
