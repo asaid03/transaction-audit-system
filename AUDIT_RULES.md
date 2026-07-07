@@ -38,6 +38,7 @@ These checks run against the transactions file.
 | Amount parsing | `invalid_amount` | error | Amount cannot be parsed as money. | Correct the amount format and rerun the audit. |
 | Zero amount | `zero_amount` | warning | Amount is exactly zero. | Confirm whether it is a reversal, placeholder, or export error. |
 | Large amount | `large_amount` | warning | Amount meets/exceeds the configured large-amount threshold. | Check approval evidence and supporting documents. |
+| Population large amount | `population_large_amount` | warning | Amount is unusually high compared with the uploaded file, using the larger of the static threshold and configured percentile threshold. | Check whether the amount is reasonable for this vendor, account, budget line, or category. |
 | Date parsing | `invalid_date` | error | Transaction date cannot be parsed. | Correct the date format and rerun the audit. |
 | Currency scope | `unsupported_currency` | warning | Currency is outside the configured allowed list. | Confirm whether the currency is valid for this audit. |
 | Missing invoice/reference | `missing_invoice_reference` | warning | Optional invoice/reference column exists but is blank for the transaction. | Request the invoice, voucher, or payment reference and document the review outcome. |

@@ -286,3 +286,106 @@ class ValidationTests(unittest.TestCase):
             ["possible_duplicate_payment", "possible_duplicate_payment"],
             issues["issue_type"].tolist(),
         )
+
+    def test_population_large_amount_runs_only_on_larger_files(self):
+        rows = [
+            {
+                "transaction_id": f"TXN-{index:03d}",
+                "transaction_date": "2024-03-15",
+                "account_id": "ACC-1",
+                "amount": "1000.00",
+                "currency": "GBP",
+                "counterparty": "Vendor A",
+            }
+            for index in range(49)
+        ]
+        rows.append(
+            {
+                "transaction_id": "TXN-999",
+                "transaction_date": "2024-03-15",
+                "account_id": "ACC-1",
+                "amount": "50000.00",
+                "currency": "GBP",
+                "counterparty": "Vendor A",
+            }
+        )
+
+        result = validate_transactions(pd.DataFrame(rows[:49]))
+        small_issue_types = result.issues_dataframe()["issue_type"].tolist()
+        self.assertNotIn("population_large_amount", small_issue_types)
+
+        result = validate_transactions(pd.DataFrame(rows))
+        large_issue_types = result.issues_dataframe()["issue_type"].tolist()
+        self.assertIn("population_large_amount", large_issue_types)
+
+    def test_population_large_amount_ignores_static_threshold_only_rows(self):
+        rows = [
+            {
+                "transaction_id": f"TXN-{index:03d}",
+                "transaction_date": "2024-03-15",
+                "account_id": "ACC-1",
+                "amount": "1000.00",
+                "currency": "GBP",
+                "counterparty": "Vendor A",
+            }
+            for index in range(55)
+        ]
+        rows.extend(
+            [
+                {
+                    "transaction_id": "TXN-055",
+                    "transaction_date": "2024-03-15",
+                    "account_id": "ACC-1",
+                    "amount": "11886.32",
+                    "currency": "GBP",
+                    "counterparty": "Vendor A",
+                },
+                {
+                    "transaction_id": "TXN-056",
+                    "transaction_date": "2024-03-15",
+                    "account_id": "ACC-1",
+                    "amount": "80000.00",
+                    "currency": "GBP",
+                    "counterparty": "Vendor A",
+                },
+                {
+                    "transaction_id": "TXN-057",
+                    "transaction_date": "2024-03-15",
+                    "account_id": "ACC-1",
+                    "amount": "90000.00",
+                    "currency": "GBP",
+                    "counterparty": "Vendor A",
+                },
+                {
+                    "transaction_id": "TXN-058",
+                    "transaction_date": "2024-03-15",
+                    "account_id": "ACC-1",
+                    "amount": "100000.00",
+                    "currency": "GBP",
+                    "counterparty": "Vendor A",
+                },
+                {
+                    "transaction_id": "TXN-059",
+                    "transaction_date": "2024-03-15",
+                    "account_id": "ACC-1",
+                    "amount": "110000.00",
+                    "currency": "GBP",
+                    "counterparty": "Vendor A",
+                },
+                {
+                    "transaction_id": "TXN-060",
+                    "transaction_date": "2024-03-15",
+                    "account_id": "ACC-1",
+                    "amount": "120000.00",
+                    "currency": "GBP",
+                    "counterparty": "Vendor A",
+                },
+            ]
+        )
+
+        result = validate_transactions(pd.DataFrame(rows))
+        issues = result.issues_dataframe()
+        population_rows = issues[issues["issue_type"].eq("population_large_amount")]
+
+        self.assertEqual([59, 60, 61, 62], population_rows["row_number"].tolist())
+        self.assertNotIn(57, population_rows["row_number"].tolist())
