@@ -61,10 +61,15 @@ def render_single_file_results(result: ValidationResult, schema_result, summary:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-    tab_review, tab_audit, tab_evidence = st.tabs(["Review queue", "Audit pack", "Evidence"])
+    tab_review, tab_ml, tab_audit, tab_evidence = st.tabs(
+        ["Review queue", "ML anomalies", "Audit pack", "Evidence"]
+    )
 
     with tab_review:
         render_review_queue(findings_frame, transaction_review, key_prefix="single")
+
+    with tab_ml:
+        st.dataframe(display_ml_anomalies(anomaly_frame), use_container_width=True, hide_index=True)
 
     with tab_audit:
         st.write("Run summary")
@@ -89,8 +94,6 @@ def render_single_file_results(result: ValidationResult, schema_result, summary:
                 use_container_width=True,
                 hide_index=True,
             )
-        with st.expander("ML anomaly signals"):
-            st.dataframe(display_ml_anomalies(anomaly_frame), use_container_width=True, hide_index=True)
         issue_csv = issues_frame.to_csv(index=False).encode("utf-8")
         st.download_button(
             "Download issues CSV",
@@ -149,6 +152,9 @@ def render_bundle_results(
 
     render_review_queue(review_findings, transaction_review, key_prefix="multi")
 
+    with st.expander("ML anomaly review", expanded=True):
+        st.dataframe(display_ml_anomalies(anomaly_frame), use_container_width=True, hide_index=True)
+
     with st.expander("Dataset and mapping details"):
         st.dataframe(display_dataset_summary(bundle.dataset_summary()), use_container_width=True, hide_index=True)
         st.write("Mapping summary")
@@ -175,9 +181,6 @@ def render_bundle_results(
 
         st.write("Skipped checks")
         st.dataframe(clean_display_frame(skipped), use_container_width=True, hide_index=True)
-
-        st.write("ML anomaly signals")
-        st.dataframe(display_ml_anomalies(anomaly_frame), use_container_width=True, hide_index=True)
 
         st.download_button(
             "Download all issues CSV",

@@ -142,11 +142,6 @@ ISSUE_GUIDANCE = {
         "why_it_matters": "The transaction meets or exceeds the configured large-amount review threshold.",
         "recommended_action": "Confirm approval evidence, supporting documentation, and whether enhanced review is required.",
     },
-    "population_large_amount": {
-        "finding": "Unusually large transaction for this file",
-        "why_it_matters": "The amount is high compared with the population of transactions in this file.",
-        "recommended_action": "Confirm approval evidence, supporting documents, and whether the amount is reasonable for this vendor or category.",
-    },
 }
 
 
@@ -274,7 +269,7 @@ def audit_readme_dataframe() -> pd.DataFrame:
             },
             {
                 "section": "Review priority",
-                "details": "Scores are transparent rule-based support signals, not fraud probabilities or audit conclusions.",
+                "details": "Scores are transparent rule-based review drivers, not fraud probabilities or audit conclusions.",
             },
             {
                 "section": "Review status",

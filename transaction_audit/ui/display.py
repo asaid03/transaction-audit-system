@@ -93,7 +93,7 @@ def display_findings(findings: pd.DataFrame) -> pd.DataFrame:
 def display_transaction_review(transaction_review: pd.DataFrame) -> pd.DataFrame:
     if transaction_review.empty:
         return transaction_review
-    display = transaction_review[
+    display = reviewable_transaction_rows(transaction_review)[
         [column for column in TRANSACTION_REVIEW_DISPLAY_COLUMNS if column in transaction_review.columns]
     ]
     display = clean_display_frame(display)
@@ -118,5 +118,14 @@ def priority_count(dataframe: pd.DataFrame, band: str) -> int:
     if dataframe.empty or "review_priority_band" not in dataframe:
         return 0
 
-    values = dataframe["review_priority_band"].astype("string").str.lower()
+    reviewable = reviewable_transaction_rows(dataframe)
+    values = reviewable["review_priority_band"].astype("string").str.lower()
     return int(values.eq(band.lower()).sum())
+
+
+def reviewable_transaction_rows(dataframe: pd.DataFrame) -> pd.DataFrame:
+    if dataframe.empty or "review_priority_score" not in dataframe:
+        return dataframe
+
+    scores = pd.to_numeric(dataframe["review_priority_score"], errors="coerce").fillna(0)
+    return dataframe[scores.gt(0)].copy()

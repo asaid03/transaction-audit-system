@@ -43,7 +43,6 @@ ISSUE_SIGNALS = {
     "duplicate_beneficiary_reference": RiskSignal(75, "high", "Duplicate beneficiary key in reference file"),
     "duplicate_budget_reference": RiskSignal(75, "high", "Duplicate budget key in reference file"),
     "possible_duplicate_payment": RiskSignal(70, "high", "Possible duplicate payment"),
-    "population_large_amount": RiskSignal(70, "medium", "Amount is unusually high compared with this file"),
     "large_amount": RiskSignal(65, "medium", "Amount exceeds configured threshold"),
     "unsupported_currency": RiskSignal(60, "medium", "Unsupported currency"),
     "missing_invoice_reference": RiskSignal(55, "medium", "Invoice/reference field is missing"),

@@ -7,6 +7,8 @@ from transaction_audit.ui.display import (
     display_dataset_summary,
     display_ml_anomalies,
     display_transaction_review,
+    priority_count,
+    reviewable_transaction_rows,
 )
 
 
@@ -56,6 +58,45 @@ class AppDisplayTest(unittest.TestCase):
         display = display_transaction_review(frame)
 
         self.assertEqual(display.iloc[0]["review_priority_band"], "High")
+
+    def test_display_transaction_review_hides_zero_score_rows(self):
+        frame = pd.DataFrame(
+            [
+                {
+                    "review_priority_score": 0,
+                    "review_priority_band": "low",
+                    "review_priority_drivers": "No priority drivers detected.",
+                    "row_number": 2,
+                    "transaction_id": "TXN-001",
+                },
+                {
+                    "review_priority_score": 10,
+                    "review_priority_band": "low",
+                    "review_priority_drivers": "Counterparty appears once in file",
+                    "row_number": 3,
+                    "transaction_id": "TXN-002",
+                },
+            ]
+        )
+
+        display = display_transaction_review(frame)
+
+        self.assertEqual([10], display["review_priority_score"].tolist())
+        self.assertEqual(["TXN-002"], display["transaction_id"].tolist())
+
+    def test_priority_count_ignores_zero_score_low_rows(self):
+        frame = pd.DataFrame(
+            [
+                {"review_priority_score": 0, "review_priority_band": "low"},
+                {"review_priority_score": 0, "review_priority_band": "low"},
+                {"review_priority_score": 10, "review_priority_band": "low"},
+                {"review_priority_score": 80, "review_priority_band": "high"},
+            ]
+        )
+
+        self.assertEqual(1, priority_count(frame, "low"))
+        self.assertEqual(1, priority_count(frame, "high"))
+        self.assertEqual(2, len(reviewable_transaction_rows(frame)))
 
     def test_display_ml_anomalies_hides_zero_score_rows(self):
         frame = pd.DataFrame(

@@ -10,7 +10,7 @@ from transaction_audit.review import (
     unique_issue_types,
     unique_values,
 )
-from transaction_audit.ui.display import display_findings, display_transaction_review
+from transaction_audit.ui.display import display_findings, display_transaction_review, reviewable_transaction_rows
 
 
 def render_review_queue(
@@ -27,12 +27,13 @@ def render_review_queue(
         st.dataframe(display_findings(filtered_findings), use_container_width=True, hide_index=True)
 
     st.subheader("Transactions by review priority")
-    if transaction_review.empty:
-        st.info("No transaction review rows are available.")
+    reviewable_transactions = reviewable_transaction_rows(transaction_review)
+    if reviewable_transactions.empty:
+        st.info("No transaction rows have priority drivers.")
         return
 
     with st.expander("Filter transactions"):
-        filtered_transactions = transaction_review_with_filters(transaction_review, key_prefix=key_prefix)
+        filtered_transactions = transaction_review_with_filters(reviewable_transactions, key_prefix=key_prefix)
     st.dataframe(display_transaction_review(filtered_transactions), use_container_width=True, hide_index=True)
 
 

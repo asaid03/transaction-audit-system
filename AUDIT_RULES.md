@@ -14,8 +14,8 @@ The workbook now includes deterministic review-priority fields:
 | `review_priority_band` | Low, medium, or high. The highest-risk signal controls the band. |
 | `review_priority_drivers` | Human-readable reasons behind the score. |
 
-These scores are audit-support signals, not fraud probabilities or audit conclusions.
-Low-priority pattern signals, such as a one-off counterparty, are only applied when the file has enough rows for the pattern to be meaningful.
+These scores are audit-support review drivers, not fraud probabilities or audit conclusions.
+Low-priority pattern drivers, such as a one-off counterparty, are only applied when the file has enough rows for the pattern to be meaningful.
 For bank-style exports, the cleaner extracts a concise counterparty from narration text and preserves the full source narration in `description` for evidence.
 
 ## Risk Levels
@@ -27,7 +27,7 @@ For bank-style exports, the cleaner extracts a concise counterparty from narrati
 
 The workbook combines technical severities with issue-specific scoring rules in `review_findings` and `transaction_review`.
 
-## ML / Anomaly Signals
+## ML / Anomaly Review
 
 The `ml_anomalies` output is an explainable anomaly layer for review support. It uses a deterministic `scikit-learn` Isolation Forest as a supporting model signal alongside explicit transaction features. It is not a fraud probability and should not be treated as an audit conclusion.
 
@@ -53,7 +53,6 @@ These checks run against the transactions file.
 | Amount parsing | `invalid_amount` | error | Amount cannot be parsed as money. | Correct the amount format and rerun the audit. |
 | Zero amount | `zero_amount` | warning | Amount is exactly zero. | Confirm whether it is a reversal, placeholder, or export error. |
 | Large amount | `large_amount` | warning | Amount meets/exceeds the configured large-amount threshold. | Check approval evidence and supporting documents. |
-| Population large amount | `population_large_amount` | warning | Amount is unusually high compared with the uploaded file, using the larger of the static threshold and configured percentile threshold. | Check whether the amount is reasonable for this vendor, account, budget line, or category. |
 | Date parsing | `invalid_date` | error | Transaction date cannot be parsed. | Correct the date format and rerun the audit. |
 | Currency scope | `unsupported_currency` | warning | Currency is outside the configured allowed list. | Confirm whether the currency is valid for this audit. |
 | Missing invoice/reference | `missing_invoice_reference` | warning | Optional invoice/reference column exists but is blank for the transaction. | Request the invoice, voucher, or payment reference and document the review outcome. |
@@ -98,6 +97,7 @@ The system currently answers:
 - whether beneficiaries received more than expected.
 - whether spend exceeds approved budget lines.
 - which findings and transaction rows should be reviewed first using deterministic priority scores.
+- which transactions look unusual compared with the uploaded transaction population, using the separate ML/anomaly review output.
 
 It does not yet perform vendor concentration, threshold structuring, or timing anomaly analysis.
 
