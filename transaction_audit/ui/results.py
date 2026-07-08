@@ -10,6 +10,7 @@ from transaction_audit.audit import (
     review_findings_dataframe,
     summary_dataframe,
 )
+from transaction_audit.anomaly import score_transaction_anomalies
 from transaction_audit.bundle_workflow import BundleAuditResult
 from transaction_audit.review import sort_by_review_priority
 from transaction_audit.risk import score_transactions
@@ -18,6 +19,7 @@ from transaction_audit.ui.display import (
     clean_display_frame,
     display_dataset_summary,
     display_findings,
+    display_ml_anomalies,
     display_mapping_summary,
 )
 from transaction_audit.ui.review_queue import render_review_queue
@@ -29,6 +31,7 @@ def render_single_file_results(result: ValidationResult, schema_result, summary:
     issues_frame = result.issues_dataframe()
     findings_frame = review_findings_dataframe(issues_frame)
     transaction_review = score_transactions(result.transactions, issues_frame)
+    anomaly_frame = score_transaction_anomalies(result.transactions)
     issue_counts_frame = issue_counts_dataframe(result)
     audit_workbook = build_audit_workbook(result, schema_result, summary)
 
@@ -86,6 +89,8 @@ def render_single_file_results(result: ValidationResult, schema_result, summary:
                 use_container_width=True,
                 hide_index=True,
             )
+        with st.expander("ML anomaly signals"):
+            st.dataframe(display_ml_anomalies(anomaly_frame), use_container_width=True, hide_index=True)
         issue_csv = issues_frame.to_csv(index=False).encode("utf-8")
         st.download_button(
             "Download issues CSV",
@@ -110,6 +115,7 @@ def render_bundle_results(
     combined_issues = audit_result.all_issues_dataframe()
     review_findings = review_findings_dataframe(combined_issues)
     transaction_review = score_transactions(audit_result.transaction_validation.transactions, combined_issues)
+    anomaly_frame = score_transaction_anomalies(audit_result.transaction_validation.transactions)
     audit_workbook = build_bundle_audit_workbook(audit_result, schema_results)
 
     render_run_status(
@@ -169,6 +175,9 @@ def render_bundle_results(
 
         st.write("Skipped checks")
         st.dataframe(clean_display_frame(skipped), use_container_width=True, hide_index=True)
+
+        st.write("ML anomaly signals")
+        st.dataframe(display_ml_anomalies(anomaly_frame), use_container_width=True, hide_index=True)
 
         st.download_button(
             "Download all issues CSV",

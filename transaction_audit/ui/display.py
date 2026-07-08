@@ -34,6 +34,20 @@ TRANSACTION_REVIEW_DISPLAY_COLUMNS = [
     "beneficiary_id",
     "budget_line_id",
 ]
+ML_ANOMALY_DISPLAY_COLUMNS = [
+    "ml_anomaly_score",
+    "ml_anomaly_band",
+    "ml_anomaly_drivers",
+    "row_number",
+    "transaction_id",
+    "transaction_date",
+    "account_id",
+    "invoice_reference",
+    "amount",
+    "currency",
+    "counterparty",
+    "vendor_id",
+]
 
 
 def clean_display_frame(dataframe: pd.DataFrame) -> pd.DataFrame:
@@ -85,6 +99,18 @@ def display_transaction_review(transaction_review: pd.DataFrame) -> pd.DataFrame
     display = clean_display_frame(display)
     if "review_priority_band" in display:
         display["review_priority_band"] = display["review_priority_band"].astype("string").str.title()
+    return display
+
+
+def display_ml_anomalies(anomalies: pd.DataFrame) -> pd.DataFrame:
+    if anomalies.empty:
+        return anomalies
+
+    display = anomalies[anomalies["ml_anomaly_score"].gt(0)].copy()
+    display = display[[column for column in ML_ANOMALY_DISPLAY_COLUMNS if column in display.columns]]
+    display = clean_display_frame(display)
+    if "ml_anomaly_band" in display:
+        display["ml_anomaly_band"] = display["ml_anomaly_band"].astype("string").str.title()
     return display
 
 

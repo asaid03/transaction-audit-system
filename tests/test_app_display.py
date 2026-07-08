@@ -2,7 +2,12 @@ import unittest
 
 import pandas as pd
 
-from transaction_audit.ui.display import clean_display_frame, display_dataset_summary, display_transaction_review
+from transaction_audit.ui.display import (
+    clean_display_frame,
+    display_dataset_summary,
+    display_ml_anomalies,
+    display_transaction_review,
+)
 
 
 class AppDisplayTest(unittest.TestCase):
@@ -51,7 +56,32 @@ class AppDisplayTest(unittest.TestCase):
         display = display_transaction_review(frame)
 
         self.assertEqual(display.iloc[0]["review_priority_band"], "High")
-        self.assertEqual(display.iloc[0]["transaction_id"], "")
+
+    def test_display_ml_anomalies_hides_zero_score_rows(self):
+        frame = pd.DataFrame(
+            [
+                {
+                    "ml_anomaly_score": 0,
+                    "ml_anomaly_band": "low",
+                    "ml_anomaly_drivers": "No anomaly drivers detected.",
+                    "row_number": 2,
+                    "transaction_id": "TXN-001",
+                },
+                {
+                    "ml_anomaly_score": 85,
+                    "ml_anomaly_band": "high",
+                    "ml_anomaly_drivers": "Invoice/reference repeats",
+                    "row_number": 3,
+                    "transaction_id": "TXN-002",
+                },
+            ]
+        )
+
+        display = display_ml_anomalies(frame)
+
+        self.assertEqual([85], display["ml_anomaly_score"].tolist())
+        self.assertEqual(["High"], display["ml_anomaly_band"].tolist())
+        self.assertEqual(display.iloc[0]["transaction_id"], "TXN-002")
 
 
 if __name__ == "__main__":

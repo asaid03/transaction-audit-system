@@ -13,6 +13,7 @@ Python and Streamlit prototype for testing financial transaction files, reconcil
 - Runs multi-file reconciliation against vendors, beneficiaries, and budgets.
 - Suggests possible vendor matches when exact vendor matching fails but a high-confidence fuzzy name match exists.
 - Adds deterministic review-priority scores, bands, and drivers for exception review.
+- Adds transaction-level ML/anomaly signals as explainable review support.
 - Shows a review-first UI with run status, priority summary, audit workbook export, and filterable review queues.
 - Records skipped checks when optional reference files are missing.
 - Produces reviewer-friendly audit workbooks with findings, risk levels, recommended actions, and raw evidence.
@@ -69,6 +70,7 @@ The multi-file audit workbook includes:
 - `review_findings`
 - `finding_summary`
 - `transaction_review`
+- `ml_anomalies`
 - `dataset_summary`
 - `issue_counts`
 - `transaction_issues`
@@ -78,7 +80,7 @@ The multi-file audit workbook includes:
 - `schema_mappings`
 - uploaded input datasets such as `transactions`, `vendors`, `beneficiaries`, and `budget`
 
-Start with `review_findings`. It is the human-facing sheet with review-priority score, band, drivers, review status, finding explanation, recommended action, and evidence. Use `transaction_review` when you want a row-level priority queue, including rows with no technical issue.
+Start with `review_findings`. It is the human-facing sheet with review-priority score, band, drivers, review status, finding explanation, recommended action, and evidence. Use `transaction_review` when you want a row-level priority queue, including rows with no technical issue. Use `ml_anomalies` as an additional review-support signal, not as a fraud conclusion.
 
 ## App Layout
 

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 import pandas as pd
 from openpyxl.utils import get_column_letter
 
+from transaction_audit.anomaly import score_transaction_anomalies
 from transaction_audit.datasets import DatasetType
 from transaction_audit.risk import priority_label_from_band, score_issues, score_transactions
 from transaction_audit.schema import SchemaResult
@@ -301,6 +302,7 @@ def build_audit_workbook(
         "review_findings": findings,
         "finding_summary": finding_summary_dataframe(findings),
         "transaction_review": score_transactions(result.transactions, issues),
+        "ml_anomalies": score_transaction_anomalies(result.transactions),
         "raw_issues": issues,
         "issue_counts": issue_counts_dataframe(result),
         "schema_mapping": schema_result.mapping_dataframe(),
@@ -362,6 +364,7 @@ def build_bundle_audit_workbook(
             bundle_result.transaction_validation.transactions,
             all_issues,
         ),
+        "ml_anomalies": score_transaction_anomalies(bundle_result.transaction_validation.transactions),
         "dataset_summary": bundle_result.bundle.dataset_summary(),
         "issue_counts": issue_counts_from_dataframe(all_issues),
         "transaction_issues": bundle_result.transaction_issues_dataframe(),

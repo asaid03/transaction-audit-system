@@ -27,6 +27,20 @@ For bank-style exports, the cleaner extracts a concise counterparty from narrati
 
 The workbook combines technical severities with issue-specific scoring rules in `review_findings` and `transaction_review`.
 
+## ML / Anomaly Signals
+
+The `ml_anomalies` output is an explainable anomaly layer for review support. It is not a fraud probability and should not be treated as an audit conclusion.
+
+Current transaction-level drivers:
+
+| Driver | Meaning |
+| --- | --- |
+| Trained high-amount threshold | Amount is high compared with the uploaded transaction population. |
+| Repeated invoice/reference | A later transaction repeats an invoice/reference with matching payment details. |
+| Missing invoice/reference | The transaction has no invoice/reference value where that field exists. |
+
+The labelled benchmark fixture is `sample_data/reduced_transactions_200_with_anomalies.csv`.
+
 ## Single-File Transaction Rules
 
 These checks run against the transactions file.
