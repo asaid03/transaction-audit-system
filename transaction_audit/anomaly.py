@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
+from sklearn.ensemble import IsolationForest
 
 from transaction_audit.parsing import parse_amounts
 
@@ -23,12 +25,17 @@ class AnomalyConfig:
     amount_signal_points: int = 70
     repeated_invoice_points: int = 85
     missing_invoice_points: int = 65
+    isolation_forest_points: int = 25
+    isolation_forest_contamination: float = 0.12
+    isolation_forest_estimators: int = 200
+    random_state: int = 42
 
 
 @dataclass(frozen=True)
 class AnomalyModel:
     amount_threshold: float | None
     config: AnomalyConfig
+    isolation_forest: IsolationForest | None = None
 
 
 def fit_anomaly_model(
@@ -38,7 +45,12 @@ def fit_anomaly_model(
     config = config or AnomalyConfig()
     amounts = _amounts(transactions)
     amount_threshold = _amount_threshold(amounts, config)
-    return AnomalyModel(amount_threshold=amount_threshold, config=config)
+    model = _fit_isolation_forest(transactions, config)
+    return AnomalyModel(
+        amount_threshold=amount_threshold,
+        config=config,
+        isolation_forest=model,
+    )
 
 
 def score_transaction_anomalies(
@@ -54,6 +66,7 @@ def score_transaction_anomalies(
     _add_amount_signals(scored, model, signals_by_index)
     _add_repeated_invoice_signals(scored, model.config, signals_by_index)
     _add_missing_invoice_signals(scored, model.config, signals_by_index)
+    _add_isolation_forest_signals(scored, model, signals_by_index)
 
     score_rows = [_score_signals(signals_by_index.get(index, [])) for index in scored.index]
     score_frame = pd.DataFrame(score_rows, columns=ANOMALY_COLUMNS)
@@ -107,6 +120,42 @@ def _amount_threshold(amounts: pd.Series, config: AnomalyConfig) -> float | None
     return float(max(config.minimum_amount_threshold, threshold))
 
 
+def _fit_isolation_forest(
+    transactions: pd.DataFrame,
+    config: AnomalyConfig,
+) -> IsolationForest | None:
+    if len(transactions) < config.min_training_rows:
+        return None
+
+    features = _feature_matrix(transactions)
+    model = IsolationForest(
+        n_estimators=config.isolation_forest_estimators,
+        contamination=config.isolation_forest_contamination,
+        random_state=config.random_state,
+    )
+    model.fit(features)
+    return model
+
+
+def _feature_matrix(transactions: pd.DataFrame) -> pd.DataFrame:
+    amounts = _amounts(transactions).abs().fillna(0)
+    invoice_values = _invoice_values(transactions)
+    repeated_invoice = _repeated_invoice_mask(transactions).astype(int)
+    missing_invoice = invoice_values.eq("").astype(int) if invoice_values is not None else 0
+    entity_frequency = _entity_frequency(transactions)
+
+    return pd.DataFrame(
+        {
+            "log_amount": np.log1p(amounts),
+            "amount_rank": amounts.rank(pct=True).fillna(0),
+            "missing_invoice": missing_invoice,
+            "repeated_invoice": repeated_invoice,
+            "entity_frequency": entity_frequency,
+        },
+        index=transactions.index,
+    )
+
+
 def _add_amount_signals(
     transactions: pd.DataFrame,
     model: AnomalyModel,
@@ -130,8 +179,22 @@ def _add_repeated_invoice_signals(
     config: AnomalyConfig,
     signals_by_index: dict[int, list[tuple[int, str]]],
 ) -> None:
-    if "invoice_reference" not in transactions or "amount" not in transactions:
+    duplicate_mask = _repeated_invoice_mask(transactions)
+    if not duplicate_mask.any():
         return
+
+    for index in duplicate_mask[duplicate_mask].index:
+        _add_signal(
+            signals_by_index,
+            index,
+            config.repeated_invoice_points,
+            "Invoice/reference repeats on a later transaction with matching payment details",
+        )
+
+
+def _repeated_invoice_mask(transactions: pd.DataFrame) -> pd.Series:
+    if "invoice_reference" not in transactions or "amount" not in transactions:
+        return pd.Series(False, index=transactions.index)
 
     invoice_values = transactions["invoice_reference"].astype("string").str.strip()
     usable = transactions.copy()
@@ -143,7 +206,7 @@ def _add_repeated_invoice_signals(
         & usable["_amount_key"].notna()
     ]
     if usable.empty:
-        return
+        return pd.Series(False, index=transactions.index)
 
     key_columns = ["_invoice_reference", "_amount_key"]
     for optional_key in ("vendor_id", "counterparty"):
@@ -152,13 +215,9 @@ def _add_repeated_invoice_signals(
             break
 
     duplicate_mask = usable.duplicated(subset=key_columns, keep="first")
-    for index in usable.loc[duplicate_mask].index:
-        _add_signal(
-            signals_by_index,
-            index,
-            config.repeated_invoice_points,
-            "Invoice/reference repeats on a later transaction with matching payment details",
-        )
+    result = pd.Series(False, index=transactions.index)
+    result.loc[usable.loc[duplicate_mask].index] = True
+    return result
 
 
 def _add_missing_invoice_signals(
@@ -177,6 +236,38 @@ def _add_missing_invoice_signals(
             config.missing_invoice_points,
             "Invoice/reference is missing",
         )
+
+
+def _add_isolation_forest_signals(
+    transactions: pd.DataFrame,
+    model: AnomalyModel,
+    signals_by_index: dict[int, list[tuple[int, str]]],
+) -> None:
+    if model.isolation_forest is None:
+        return
+
+    predictions = model.isolation_forest.predict(_feature_matrix(transactions))
+    for index in transactions.index[predictions == -1]:
+        _add_signal(
+            signals_by_index,
+            index,
+            model.config.isolation_forest_points,
+            "Isolation Forest marked this transaction unusual across combined features",
+        )
+
+
+def _invoice_values(transactions: pd.DataFrame) -> pd.Series | None:
+    if "invoice_reference" not in transactions:
+        return None
+    return transactions["invoice_reference"].astype("string").str.strip().fillna("")
+
+
+def _entity_frequency(transactions: pd.DataFrame) -> pd.Series:
+    for column in ("vendor_id", "counterparty"):
+        if column in transactions:
+            values = transactions[column].astype("string").str.strip().fillna("")
+            return values.map(values.value_counts()).astype(float)
+    return pd.Series(0.0, index=transactions.index)
 
 
 def _add_signal(

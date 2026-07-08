@@ -106,7 +106,7 @@ def display_ml_anomalies(anomalies: pd.DataFrame) -> pd.DataFrame:
     if anomalies.empty:
         return anomalies
 
-    display = anomalies[anomalies["ml_anomaly_score"].gt(0)].copy()
+    display = anomalies[anomalies["ml_anomaly_score"].ge(50)].copy()
     display = display[[column for column in ML_ANOMALY_DISPLAY_COLUMNS if column in display.columns]]
     display = clean_display_frame(display)
     if "ml_anomaly_band" in display:

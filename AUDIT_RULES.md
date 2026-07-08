@@ -29,7 +29,7 @@ The workbook combines technical severities with issue-specific scoring rules in 
 
 ## ML / Anomaly Signals
 
-The `ml_anomalies` output is an explainable anomaly layer for review support. It is not a fraud probability and should not be treated as an audit conclusion.
+The `ml_anomalies` output is an explainable anomaly layer for review support. It uses a deterministic `scikit-learn` Isolation Forest as a supporting model signal alongside explicit transaction features. It is not a fraud probability and should not be treated as an audit conclusion.
 
 Current transaction-level drivers:
 
@@ -38,6 +38,7 @@ Current transaction-level drivers:
 | Trained high-amount threshold | Amount is high compared with the uploaded transaction population. |
 | Repeated invoice/reference | A later transaction repeats an invoice/reference with matching payment details. |
 | Missing invoice/reference | The transaction has no invoice/reference value where that field exists. |
+| Isolation Forest support | The fitted model marked the transaction unusual across combined amount, invoice, and entity-frequency features. |
 
 The labelled benchmark fixture is `sample_data/reduced_transactions_200_with_anomalies.csv`.
 

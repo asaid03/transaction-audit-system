@@ -13,7 +13,7 @@ Python and Streamlit prototype for testing financial transaction files, reconcil
 - Runs multi-file reconciliation against vendors, beneficiaries, and budgets.
 - Suggests possible vendor matches when exact vendor matching fails but a high-confidence fuzzy name match exists.
 - Adds deterministic review-priority scores, bands, and drivers for exception review.
-- Adds transaction-level ML/anomaly signals as explainable review support.
+- Adds transaction-level ML/anomaly signals as explainable review support, using `scikit-learn` Isolation Forest as a supporting model signal.
 - Shows a review-first UI with run status, priority summary, audit workbook export, and filterable review queues.
 - Records skipped checks when optional reference files are missing.
 - Produces reviewer-friendly audit workbooks with findings, risk levels, recommended actions, and raw evidence.

@@ -27,7 +27,7 @@ Use `README.md` for the current product scope and `AUDIT_RULES.md` for the curre
 - Do not introduce a rule registry, ML model, database, or React frontend unless explicitly planned.
 - Keep deterministic, explainable rules ahead of AI/ML scoring.
 - Keep near-term ML transaction-focused unless the user explicitly reopens employee or chart-of-account support.
-- Keep ML/anomaly output explainable and separate from deterministic validation, reconciliation, and review-priority scoring.
+- Keep ML/anomaly output explainable and separate from deterministic validation, reconciliation, and review-priority scoring. `scikit-learn` Isolation Forest is currently a supporting signal, not the source of fraud conclusions.
 - If a change can be a focused function plus tests, do that before creating a framework.
 - Avoid generic "enterprise" features unless they support the current audit workflow.
 

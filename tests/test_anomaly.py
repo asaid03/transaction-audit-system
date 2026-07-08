@@ -63,13 +63,20 @@ class AnomalyTests(unittest.TestCase):
         self.assertGreaterEqual(metrics["precision"], 0.70)
         self.assertEqual(1.0, metrics["recall"])
 
+    def test_benchmark_fits_scikit_learn_isolation_forest(self):
+        _, transactions = load_benchmark_transactions()
+
+        model = fit_anomaly_model(transactions)
+
+        self.assertIsNotNone(model.isolation_forest)
+
     def test_benchmark_large_payment_rows_have_amount_driver(self):
         _, transactions = load_benchmark_transactions()
 
         scored = score_transaction_anomalies(transactions)
         large_rows = scored[scored["row_number"].isin(range(187, 192))]
 
-        self.assertEqual([70, 70, 70, 70, 70], large_rows["ml_anomaly_score"].tolist())
+        self.assertTrue(large_rows["ml_anomaly_score"].ge(70).all())
         self.assertTrue(
             large_rows["ml_anomaly_drivers"]
             .astype(str)
@@ -83,7 +90,7 @@ class AnomalyTests(unittest.TestCase):
         scored = score_transaction_anomalies(transactions)
         duplicate_rows = scored[scored["row_number"].isin(range(192, 197))]
 
-        self.assertEqual([85, 85, 85, 85, 85], duplicate_rows["ml_anomaly_score"].tolist())
+        self.assertTrue(duplicate_rows["ml_anomaly_score"].ge(85).all())
         self.assertTrue(
             duplicate_rows["ml_anomaly_drivers"]
             .astype(str)
@@ -97,7 +104,7 @@ class AnomalyTests(unittest.TestCase):
         scored = score_transaction_anomalies(transactions)
         missing_rows = scored[scored["row_number"].isin(range(197, 202))]
 
-        self.assertEqual([65, 65, 65, 65, 65], missing_rows["ml_anomaly_score"].tolist())
+        self.assertTrue(missing_rows["ml_anomaly_score"].ge(65).all())
         self.assertTrue(
             missing_rows["ml_anomaly_drivers"]
             .astype(str)

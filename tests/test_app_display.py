@@ -68,11 +68,18 @@ class AppDisplayTest(unittest.TestCase):
                     "transaction_id": "TXN-001",
                 },
                 {
+                    "ml_anomaly_score": 25,
+                    "ml_anomaly_band": "low",
+                    "ml_anomaly_drivers": "Isolation Forest marked this transaction unusual",
+                    "row_number": 3,
+                    "transaction_id": "TXN-002",
+                },
+                {
                     "ml_anomaly_score": 85,
                     "ml_anomaly_band": "high",
                     "ml_anomaly_drivers": "Invoice/reference repeats",
-                    "row_number": 3,
-                    "transaction_id": "TXN-002",
+                    "row_number": 4,
+                    "transaction_id": "TXN-003",
                 },
             ]
         )
@@ -81,7 +88,7 @@ class AppDisplayTest(unittest.TestCase):
 
         self.assertEqual([85], display["ml_anomaly_score"].tolist())
         self.assertEqual(["High"], display["ml_anomaly_band"].tolist())
-        self.assertEqual(display.iloc[0]["transaction_id"], "TXN-002")
+        self.assertEqual(display.iloc[0]["transaction_id"], "TXN-003")
 
 
 if __name__ == "__main__":
