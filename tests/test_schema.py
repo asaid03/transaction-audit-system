@@ -27,6 +27,16 @@ class SchemaTests(unittest.TestCase):
             result.source_to_canonical,
         )
 
+    def test_infers_account_code_alias(self):
+        dataframe = pd.DataFrame(
+            columns=["transaction_id", "date", "account_code", "amount", "currency", "counterparty"]
+        )
+
+        result = apply_schema(dataframe)
+
+        self.assertTrue(result.has_required_schema)
+        self.assertEqual("account_id", result.source_to_canonical["account_code"])
+
     def test_normalizes_real_bank_export_column_names(self):
         self.assertEqual("debit", normalize_column_key("Debit (USD)"))
         self.assertEqual("credit", normalize_column_key("Credit (USD)"))
@@ -118,3 +128,21 @@ class SchemaTests(unittest.TestCase):
 
         self.assertEqual("supplier_code", plan.canonical_to_source["vendor_id"])
         self.assertEqual("recipient_code", plan.canonical_to_source["beneficiary_id"])
+
+    def test_transaction_mapping_can_include_invoice_reference(self):
+        dataframe = pd.DataFrame(
+            columns=[
+                "txn_ref",
+                "date",
+                "acc_id",
+                "amt",
+                "ccy",
+                "counterparty_name",
+                "invoice_no",
+            ]
+        )
+
+        plan = build_mapping_plan(dataframe, dataset_type=DatasetType.TRANSACTIONS)
+
+        self.assertTrue(plan.auto_schema.has_required_schema)
+        self.assertEqual("invoice_no", plan.canonical_to_source["invoice_reference"])

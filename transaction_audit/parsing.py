@@ -45,6 +45,8 @@ def prepare_transactions(transactions: pd.DataFrame, config: ValidationConfig) -
     checked["currency"] = checked["currency"].astype("string").str.upper().str.strip()
     checked["counterparty"] = checked["counterparty"].astype("string").str.strip()
     checked["account_id"] = checked["account_id"].astype("string").str.strip()
+    if "invoice_reference" in checked:
+        checked["invoice_reference"] = checked["invoice_reference"].astype("string").str.strip()
     checked["amount"] = parse_amounts(checked["amount"])
     checked["transaction_date"] = parse_transaction_dates(
         checked["transaction_date"],

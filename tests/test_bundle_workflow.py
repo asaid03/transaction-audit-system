@@ -52,6 +52,25 @@ class BundleWorkflowTests(unittest.TestCase):
         self.assertIsNone(cleaning_result)
         pd.testing.assert_frame_equal(raw, prepared)
 
+    def test_maybe_clean_transactions_keeps_table_like_export_columns(self):
+        raw = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001"],
+                "date": ["2026-05-01"],
+                "vendor_id": ["VEN-001"],
+                "account_code": ["5100"],
+                "amount": ["100.00"],
+                "currency": ["USD"],
+                "description": ["Software payment"],
+            }
+        )
+
+        prepared, cleaning_result = maybe_clean_transactions(raw)
+
+        self.assertIsNone(cleaning_result)
+        self.assertEqual(list(raw.columns), list(prepared.columns))
+        pd.testing.assert_frame_equal(raw, prepared)
+
     def test_maybe_clean_transactions_drops_footers_even_when_schema_is_ready(self):
         raw = pd.DataFrame(
             {

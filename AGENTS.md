@@ -11,7 +11,7 @@ Build an explainable financial audit prototype that can:
 - produce reviewer-friendly audit outputs,
 - grow in small, tested phases.
 
-The current completed scope is Phase 2.5: multi-file transaction, vendor, beneficiary, and budget reconciliation plus conservative cleaning for realistic bank/mobile-money/ledger transaction exports. The next planned slice is Phase 3 review-priority scoring.
+Use `README.md` for the current product scope and `AUDIT_RULES.md` for the current implemented checks. Do not duplicate phase status in this file; phase notes go stale quickly.
 
 ## Think Before Coding
 
@@ -26,6 +26,7 @@ The current completed scope is Phase 2.5: multi-file transaction, vendor, benefi
 - Do not add speculative abstractions.
 - Do not introduce a rule registry, ML model, database, or React frontend unless explicitly planned.
 - Keep deterministic, explainable rules ahead of AI/ML scoring.
+- Keep near-term ML transaction-focused unless the user explicitly reopens employee or chart-of-account support.
 - If a change can be a focused function plus tests, do that before creating a framework.
 - Avoid generic "enterprise" features unless they support the current audit workflow.
 
@@ -84,9 +85,9 @@ For non-trivial changes:
 - New findings should include a clear title, why it matters, and recommended action.
 - Do not let raw technical issue logs become the primary user-facing output.
 
-## Next Planned Slice
+## Review Scoring Boundary
 
-Phase 3 review-priority scoring:
+Review-priority scoring:
 
 ```text
 review_priority_band = worst signal wins
@@ -95,6 +96,8 @@ review_priority_drivers = stable, human-readable reasons
 ```
 
 The score must be deterministic. The same input data and issues must produce identical scores, bands, and drivers. Do not call it a fraud score or fraud probability.
+
+Keep scoring logic in `transaction_audit/risk.py`. Do not add scoring rules to `transaction_audit/reconciliation.py`; reconciliation should keep producing factual issues, and risk should decide review priority.
 
 ## Git And Safety
 

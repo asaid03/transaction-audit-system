@@ -68,6 +68,9 @@ def maybe_clean_transactions(dataframe: pd.DataFrame) -> tuple[pd.DataFrame, Cle
     if not cleaned_schema_is_ready:
         return dataframe, None if raw_schema_is_ready else cleaning_result
 
+    if not _cleaning_changed_structure(cleaning_result):
+        return dataframe, None
+
     if not raw_schema_is_ready or _cleaning_removed_rows(cleaning_result):
         return cleaning_result.dataframe, cleaning_result
 
@@ -151,3 +154,13 @@ def build_audit_bundle(prepared_datasets: dict[DatasetType, AuditDataset]) -> Au
 
 def _cleaning_removed_rows(cleaning_result: CleaningResult) -> bool:
     return bool(cleaning_result.dropped_rows)
+
+
+def _cleaning_changed_structure(cleaning_result: CleaningResult) -> bool:
+    if cleaning_result.source_header_row and cleaning_result.source_header_row > 1:
+        return True
+    if cleaning_result.dropped_rows:
+        return True
+
+    header_message = f"Detected transaction header on source row {cleaning_result.source_header_row}."
+    return any(transformation != header_message for transformation in cleaning_result.transformations)

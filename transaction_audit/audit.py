@@ -7,12 +7,16 @@ import pandas as pd
 from openpyxl.utils import get_column_letter
 
 from transaction_audit.datasets import DatasetType
+from transaction_audit.risk import priority_label_from_band, score_issues, score_transactions
 from transaction_audit.schema import SchemaResult
 from transaction_audit.types import ValidationResult
 
 
 FINDING_COLUMNS = [
     "finding_id",
+    "review_priority_score",
+    "review_priority_band",
+    "review_priority_drivers",
     "priority",
     "review_status",
     "finding",
@@ -87,6 +91,11 @@ ISSUE_GUIDANCE = {
         "why_it_matters": "The payment resembles another transaction by date, amount, and counterparty.",
         "recommended_action": "Compare the matching payments and confirm whether both should exist.",
     },
+    "missing_invoice_reference": {
+        "finding": "Invoice or reference is missing",
+        "why_it_matters": "Missing invoice evidence makes it harder to confirm the payment purpose and supporting documentation.",
+        "recommended_action": "Request the invoice, voucher, or payment reference and document the review outcome.",
+    },
     "zero_amount": {
         "finding": "Zero amount transaction",
         "why_it_matters": "A zero amount entry may be a reversal, placeholder, or export error.",
@@ -131,6 +140,11 @@ ISSUE_GUIDANCE = {
         "finding": "Large amount transaction",
         "why_it_matters": "The transaction meets or exceeds the configured large-amount review threshold.",
         "recommended_action": "Confirm approval evidence, supporting documentation, and whether enhanced review is required.",
+    },
+    "population_large_amount": {
+        "finding": "Unusually large transaction for this file",
+        "why_it_matters": "The amount is high compared with the population of transactions in this file.",
+        "recommended_action": "Confirm approval evidence, supporting documents, and whether the amount is reasonable for this vendor or category.",
     },
 }
 
@@ -179,9 +193,13 @@ def review_findings_dataframe(issues: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=FINDING_COLUMNS)
 
     rows = []
-    sorted_issues = issues.copy()
-    sorted_issues["_priority_order"] = sorted_issues["severity"].map({"error": 0, "warning": 1}).fillna(2)
-    sorted_issues = sorted_issues.sort_values(["_priority_order", "dataset", "row_number"], kind="stable")
+    sorted_issues = score_issues(issues)
+    sorted_issues["_priority_order"] = sorted_issues["review_priority_band"].map({"high": 0, "medium": 1, "low": 2}).fillna(3)
+    sorted_issues = sorted_issues.sort_values(
+        ["_priority_order", "review_priority_score", "dataset", "row_number"],
+        ascending=[True, False, True, True],
+        kind="stable",
+    )
 
     for position, issue in enumerate(sorted_issues.drop(columns=["_priority_order"]).to_dict("records"), start=1):
         guidance = ISSUE_GUIDANCE.get(
@@ -195,7 +213,10 @@ def review_findings_dataframe(issues: pd.DataFrame) -> pd.DataFrame:
         rows.append(
             {
                 "finding_id": f"F-{position:04d}",
-                "priority": priority_for_severity(issue["severity"]),
+                "review_priority_score": issue["review_priority_score"],
+                "review_priority_band": priority_label_from_band(issue["review_priority_band"]),
+                "review_priority_drivers": issue["review_priority_drivers"],
+                "priority": priority_label_from_band(issue["review_priority_band"]),
                 "review_status": "Needs review",
                 "finding": guidance["finding"],
                 "why_it_matters": guidance["why_it_matters"],
@@ -248,7 +269,11 @@ def audit_readme_dataframe() -> pd.DataFrame:
         [
             {
                 "section": "How to use this workbook",
-                "details": "Start with review_findings. Each row explains the issue, why it matters, and the recommended review action.",
+                "details": "Start with review_findings. Rows are sorted by deterministic review priority, with plain-language drivers and recommended review actions.",
+            },
+            {
+                "section": "Review priority",
+                "details": "Scores are transparent rule-based support signals, not fraud probabilities or audit conclusions.",
             },
             {
                 "section": "Review status",
@@ -275,6 +300,7 @@ def build_audit_workbook(
         "summary": summary_dataframe(summary),
         "review_findings": findings,
         "finding_summary": finding_summary_dataframe(findings),
+        "transaction_review": score_transactions(result.transactions, issues),
         "raw_issues": issues,
         "issue_counts": issue_counts_dataframe(result),
         "schema_mapping": schema_result.mapping_dataframe(),
@@ -332,6 +358,10 @@ def build_bundle_audit_workbook(
         "summary": summary_dataframe(build_bundle_audit_summary(bundle_result)),
         "review_findings": findings,
         "finding_summary": finding_summary_dataframe(findings),
+        "transaction_review": score_transactions(
+            bundle_result.transaction_validation.transactions,
+            all_issues,
+        ),
         "dataset_summary": bundle_result.bundle.dataset_summary(),
         "issue_counts": issue_counts_from_dataframe(all_issues),
         "transaction_issues": bundle_result.transaction_issues_dataframe(),

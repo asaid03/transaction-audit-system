@@ -1,17 +1,31 @@
 # Audit Rules and Risk Levels
 
-Last updated: 2026-05-23
+Last updated: 2026-05-26
 
 This file lists the checks currently implemented by the audit engine. It is meant to make the review scope clear for developers, testers, and non-technical reviewers.
 
+## Review Priority
+
+The workbook now includes deterministic review-priority fields:
+
+| Field | Meaning |
+| --- | --- |
+| `review_priority_score` | Rule-based score from 0-100. Multiple drivers add together and cap at 100. |
+| `review_priority_band` | Low, medium, or high. The highest-risk signal controls the band. |
+| `review_priority_drivers` | Human-readable reasons behind the score. |
+
+These scores are audit-support signals, not fraud probabilities or audit conclusions.
+Low-priority pattern signals, such as a one-off counterparty, are only applied when the file has enough rows for the pattern to be meaningful.
+For bank-style exports, the cleaner extracts a concise counterparty from narration text and preserves the full source narration in `description` for evidence.
+
 ## Risk Levels
 
-| Severity | Workbook priority | Meaning |
+| Severity / Signal | Workbook priority | Meaning |
 | --- | --- | --- |
 | `error` | High | Blocking or high-risk issue. The record or reference should be reviewed before relying on the audit output. |
 | `warning` | Medium | Review signal. The data may be valid, but the item deserves human attention. |
 
-The workbook converts technical severities into reviewer-facing priorities in `review_findings`.
+The workbook combines technical severities with issue-specific scoring rules in `review_findings` and `transaction_review`.
 
 ## Single-File Transaction Rules
 
@@ -24,10 +38,12 @@ These checks run against the transactions file.
 | Amount parsing | `invalid_amount` | error | Amount cannot be parsed as money. | Correct the amount format and rerun the audit. |
 | Zero amount | `zero_amount` | warning | Amount is exactly zero. | Confirm whether it is a reversal, placeholder, or export error. |
 | Large amount | `large_amount` | warning | Amount meets/exceeds the configured large-amount threshold. | Check approval evidence and supporting documents. |
+| Population large amount | `population_large_amount` | warning | Amount is unusually high compared with the uploaded file, using the larger of the static threshold and configured percentile threshold. | Check whether the amount is reasonable for this vendor, account, budget line, or category. |
 | Date parsing | `invalid_date` | error | Transaction date cannot be parsed. | Correct the date format and rerun the audit. |
 | Currency scope | `unsupported_currency` | warning | Currency is outside the configured allowed list. | Confirm whether the currency is valid for this audit. |
+| Missing invoice/reference | `missing_invoice_reference` | warning | Optional invoice/reference column exists but is blank for the transaction. | Request the invoice, voucher, or payment reference and document the review outcome. |
 | Duplicate transaction ID | `duplicate_transaction_id` | error | Same transaction ID appears more than once. | Check whether rows are duplicates, corrections, or separate payments with wrong IDs. |
-| Possible duplicate payment | `possible_duplicate_payment` | warning | Same account, counterparty, amount, and currency appears within the configured date window under different IDs. | Compare the payments and confirm both should exist. |
+| Possible duplicate payment | `possible_duplicate_payment` | warning | Same invoice reference, or same account/counterparty/amount/currency within the configured date window, appears under different transaction IDs. | Compare the payments and confirm both should exist. |
 
 ## Multi-File Reconciliation Rules
 
@@ -66,6 +82,7 @@ The system currently answers:
 - whether reference files contain duplicate keys.
 - whether beneficiaries received more than expected.
 - whether spend exceeds approved budget lines.
+- which findings and transaction rows should be reviewed first using deterministic priority scores.
 
 It does not yet perform vendor concentration, threshold structuring, or timing anomaly analysis.
 

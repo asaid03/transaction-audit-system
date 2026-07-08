@@ -13,6 +13,7 @@ from transaction_audit.rules import (
     check_dates,
     check_duplicate_transaction_ids,
     check_missing_values,
+    check_missing_invoice_references,
     check_possible_duplicate_payments,
     check_required_columns,
     sort_issues,
@@ -40,6 +41,7 @@ def validate_transactions(
     issues.extend(check_amounts(prepared.original, prepared.checked, config))
     issues.extend(check_dates(prepared.original, prepared.checked))
     issues.extend(check_currencies(prepared.original, prepared.checked, config))
+    issues.extend(check_missing_invoice_references(prepared.original, prepared.checked))
     issues.extend(check_duplicate_transaction_ids(prepared.checked))
     issues.extend(check_possible_duplicate_payments(prepared.checked, config))
 

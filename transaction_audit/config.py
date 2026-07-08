@@ -36,6 +36,14 @@ DEFAULT_COLUMN_ALIASES = {
     "acct_id": "account_id",
     "acct id": "account_id",
     "account": "account_id",
+    "account_code": "account_id",
+    "account code": "account_id",
+    "account_number": "account_id",
+    "account number": "account_id",
+    "nominal_code": "account_id",
+    "nominal code": "account_id",
+    "gl_code": "account_id",
+    "gl code": "account_id",
     "amount": "amount",
     "amt": "amount",
     "value": "amount",
@@ -47,6 +55,19 @@ DEFAULT_COLUMN_ALIASES = {
     "vendor": "counterparty",
     "merchant": "counterparty",
     "payee": "counterparty",
+    "invoice_reference": "invoice_reference",
+    "invoice reference": "invoice_reference",
+    "invoice_ref": "invoice_reference",
+    "invoice ref": "invoice_reference",
+    "invoice": "invoice_reference",
+    "invoice_no": "invoice_reference",
+    "invoice no": "invoice_reference",
+    "invoice_number": "invoice_reference",
+    "invoice number": "invoice_reference",
+    "document_no": "invoice_reference",
+    "document no": "invoice_reference",
+    "document_number": "invoice_reference",
+    "document number": "invoice_reference",
     "vendor_id": "vendor_id",
     "vendor id": "vendor_id",
     "vendor_code": "vendor_id",
@@ -137,6 +158,8 @@ BUDGET_COLUMN_ALIASES = {
 @dataclass(frozen=True)
 class ValidationConfig:
     large_amount_threshold: float = 10000.0
+    population_large_amount_min_rows: int = 50
+    population_large_amount_quantile: float = 0.95
     allowed_currencies: tuple[str, ...] = ("GBP", "USD", "EUR")
     date_dayfirst: bool = True
     duplicate_payment_window_days: int = 2

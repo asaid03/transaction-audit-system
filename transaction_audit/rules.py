@@ -51,6 +51,8 @@ def check_amounts(
     invalid_amount = checked["amount"].isna() & ~amount_missing
     zero_amount = checked["amount"].eq(0)
     large_amount = checked["amount"].abs().ge(config.large_amount_threshold)
+    population_threshold = population_large_amount_threshold(checked["amount"], config)
+    population_large_amount = population_large_amount_mask(checked["amount"], population_threshold)
 
     for position, row in rows_matching(checked, invalid_amount):
         issues.append(
@@ -85,6 +87,21 @@ def check_amounts(
                 issue_type="large_amount",
                 severity="warning",
                 message=f"Amount is at or above {config.large_amount_threshold:,.2f}.",
+            )
+        )
+
+    for position, row in rows_matching(checked, population_large_amount):
+        issues.append(
+            make_issue(
+                row_number=position,
+                row=row,
+                field="amount",
+                issue_type="population_large_amount",
+                severity="warning",
+                message=(
+                    "Amount is unusually high compared with this file "
+                    f"(at or above {population_threshold:,.2f})."
+                ),
             )
         )
 
@@ -135,6 +152,23 @@ def check_currencies(
     return issues
 
 
+def check_missing_invoice_references(original: pd.DataFrame, checked: pd.DataFrame) -> list[ValidationIssue]:
+    if "invoice_reference" not in original:
+        return []
+
+    return [
+        make_issue(
+            row_number=position,
+            row=row,
+            field="invoice_reference",
+            issue_type="missing_invoice_reference",
+            severity="warning",
+            message="Invoice/reference field is blank.",
+        )
+        for position, row in rows_matching(checked, _missing_mask(original["invoice_reference"]))
+    ]
+
+
 def check_duplicate_transaction_ids(checked: pd.DataFrame) -> list[ValidationIssue]:
     issues = []
     duplicate_mask = (
@@ -178,6 +212,18 @@ def check_possible_duplicate_payments(
         if group["transaction_id"].nunique() < 2:
             continue
 
+        if "invoice_reference" in group:
+            invoice_group_candidates = group.assign(
+                _invoice_reference=group["invoice_reference"].astype("string").str.strip()
+            )
+            invoice_group_candidates = invoice_group_candidates[
+                invoice_group_candidates["_invoice_reference"].notna()
+                & invoice_group_candidates["_invoice_reference"].ne("")
+            ]
+            for _, invoice_group in invoice_group_candidates.groupby("_invoice_reference", dropna=False):
+                if invoice_group["transaction_id"].nunique() >= 2 and len(invoice_group) > 1:
+                    flagged_indexes.update(invoice_group.index.tolist())
+
         ordered = group.sort_values("transaction_date")
         ordered_indexes = list(ordered.index)
         ordered_dates = ordered["transaction_date"].tolist()
@@ -204,8 +250,9 @@ def check_possible_duplicate_payments(
             issue_type="possible_duplicate_payment",
             severity="warning",
             message=(
-                "Possible duplicate payment: same account, counterparty, amount, "
-                f"and currency within {config.duplicate_payment_window_days} days."
+                "Possible duplicate payment: same invoice reference or same account, "
+                "counterparty, amount, and currency within "
+                f"{config.duplicate_payment_window_days} days."
             ),
         )
         for position, row in rows_matching(checked, pd.Series(duplicate_payment_mask, index=checked.index))
@@ -223,6 +270,27 @@ def rows_matching(dataframe: pd.DataFrame, mask: pd.Series):
 
     for position, row in zip(positions, records):
         yield position, row
+
+
+def population_large_amount_mask(amounts: pd.Series, threshold: float | None) -> pd.Series:
+    if threshold is None:
+        return pd.Series(False, index=amounts.index)
+    return amounts.abs().ge(threshold)
+
+
+def population_large_amount_threshold(
+    amounts: pd.Series,
+    config: ValidationConfig,
+) -> float | None:
+    valid_amounts = amounts.dropna().abs()
+    if len(valid_amounts) < config.population_large_amount_min_rows:
+        return None
+
+    percentile_threshold = valid_amounts.quantile(config.population_large_amount_quantile)
+    if pd.isna(percentile_threshold):
+        return None
+
+    return float(max(config.large_amount_threshold, percentile_threshold))
 
 
 def make_issue(

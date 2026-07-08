@@ -7,11 +7,13 @@ Python and Streamlit prototype for testing financial transaction files, reconcil
 - Loads transaction files from CSV or Excel.
 - Preserves raw values during ingestion so validation can report parsing issues clearly.
 - Auto-detects common column names and supports manual schema mapping.
-- Applies conservative cleanup for bank-style transaction exports when normal schema detection fails.
+- Applies conservative cleanup for bank-style transaction exports, including narration-based counterparty extraction.
 - Saves dataset-scoped import profiles for repeat file formats.
 - Runs single-file transaction validation checks.
 - Runs multi-file reconciliation against vendors, beneficiaries, and budgets.
 - Suggests possible vendor matches when exact vendor matching fails but a high-confidence fuzzy name match exists.
+- Adds deterministic review-priority scores, bands, and drivers for exception review.
+- Shows a review-first UI with run status, priority summary, audit workbook export, and filterable review queues.
 - Records skipped checks when optional reference files are missing.
 - Produces reviewer-friendly audit workbooks with findings, risk levels, recommended actions, and raw evidence.
 
@@ -26,13 +28,14 @@ Checks include:
 - missing required columns
 - missing required values
 - invalid amounts
-- zero or large amounts
+- zero, static-threshold large, and population-relative large amounts
 - invalid dates
 - unsupported currencies
 - duplicate transaction IDs
 - possible duplicate payments
+- missing invoice/reference values when an invoice/reference column is present
 
-Bank-style CSV exports with preamble rows, debit/credit split columns, narration fields, and footer totals can be cleaned before validation. See the realistic fixtures in `sample_data/realistic_bank_export.csv`, `sample_data/realistic_mobile_money_export.csv`, and `sample_data/realistic_ledger_export.csv`.
+Bank-style CSV exports with preamble rows, debit/credit split columns, narration fields, and footer totals can be cleaned before validation. See the realistic fixtures in `sample_data/realistic_bank_export.csv`, `sample_data/realistic_bank_export_29.csv`, `sample_data/realistic_mobile_money_export.csv`, and `sample_data/realistic_ledger_export.csv`.
 
 ### Multi-File Reconciliation
 
@@ -65,6 +68,7 @@ The multi-file audit workbook includes:
 - `summary`
 - `review_findings`
 - `finding_summary`
+- `transaction_review`
 - `dataset_summary`
 - `issue_counts`
 - `transaction_issues`
@@ -74,7 +78,16 @@ The multi-file audit workbook includes:
 - `schema_mappings`
 - uploaded input datasets such as `transactions`, `vendors`, `beneficiaries`, and `budget`
 
-Start with `review_findings`. It is the human-facing sheet with priority, review status, finding explanation, recommended action, and evidence.
+Start with `review_findings`. It is the human-facing sheet with review-priority score, band, drivers, review status, finding explanation, recommended action, and evidence. Use `transaction_review` when you want a row-level priority queue, including rows with no technical issue.
+
+## App Layout
+
+The Streamlit app is intentionally review-first:
+
+- upload and mapping appear only when needed
+- run status and key counts appear before detailed tables
+- review queues are the primary working view
+- raw input data, schema mappings, cleaning details, skipped checks, and CSV downloads sit behind evidence/detail panels
 
 ## Rules Reference
 
@@ -82,7 +95,7 @@ See [AUDIT_RULES.md](AUDIT_RULES.md) for the current rule list, risk levels, iss
 
 ## AI Agent Guidance
 
-See [AGENTS.md](AGENTS.md) for repo-specific instructions for Codex, Claude, Cursor, and other coding agents. It captures the project rules around simplicity, surgical changes, testing, audit explainability, and the Phase 3 roadmap.
+See [AGENTS.md](AGENTS.md) for repo-specific instructions for Codex, Claude, Cursor, and other coding agents. It captures the project rules around simplicity, surgical changes, testing, audit explainability, and the current roadmap.
 
 ## Run Locally
 
