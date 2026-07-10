@@ -57,7 +57,7 @@ These checks run against the transactions file.
 | Currency scope | `unsupported_currency` | warning | Currency is outside the configured allowed list. | Confirm whether the currency is valid for this audit. |
 | Missing invoice/reference | `missing_invoice_reference` | warning | Optional invoice/reference column exists but is blank for the transaction. | Request the invoice, voucher, or payment reference and document the review outcome. |
 | Duplicate transaction ID | `duplicate_transaction_id` | error | Same transaction ID appears more than once. | Check whether rows are duplicates, corrections, or separate payments with wrong IDs. |
-| Possible duplicate payment | `possible_duplicate_payment` | warning | Same invoice reference, or same account/counterparty/amount/currency within the configured date window, appears under different transaction IDs. | Compare the payments and confirm both should exist. |
+| Possible duplicate payment | `possible_duplicate_payment` | warning | The same invoice reference, or the same account/payee/amount/currency within the review window, appears under different transaction IDs. The finding names the related transaction IDs and the reason for the match. | Compare the named payments and confirm both should exist. |
 
 ## Multi-File Reconciliation Rules
 

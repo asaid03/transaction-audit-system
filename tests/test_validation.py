@@ -176,6 +176,8 @@ class ValidationTests(unittest.TestCase):
             issues["issue_type"].tolist(),
         )
         self.assertEqual(["warning", "warning"], issues["severity"].tolist())
+        self.assertEqual(["TXN-002", "TXN-001"], issues["related_record_id"].tolist())
+        self.assertIn("same account, payee, amount and currency", issues.loc[0, "message"])
 
     def test_possible_duplicate_payments_require_different_transaction_ids(self):
         dataframe = pd.DataFrame(
@@ -286,6 +288,8 @@ class ValidationTests(unittest.TestCase):
             ["possible_duplicate_payment", "possible_duplicate_payment"],
             issues["issue_type"].tolist(),
         )
+        self.assertEqual(["TXN-002", "TXN-001"], issues["related_record_id"].tolist())
+        self.assertTrue(issues["message"].str.contains("INV-001", regex=False).all())
 
     def test_population_relative_large_amount_is_not_a_validation_issue(self):
         rows = [

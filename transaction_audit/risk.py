@@ -34,7 +34,7 @@ ISSUE_SIGNALS = {
     "invalid_amount": RiskSignal(85, "high", "Amount could not be parsed"),
     "invalid_date": RiskSignal(80, "high", "Invalid transaction date"),
     "invalid_transaction_date": RiskSignal(80, "high", "Invalid transaction date"),
-    "unknown_vendor_reference": RiskSignal(80, "high", "Counterparty was not found in the vendor file"),
+    "unknown_vendor_reference": RiskSignal(80, "high", "Payee was not found in the approved vendor list"),
     "unknown_beneficiary_reference": RiskSignal(80, "high", "Beneficiary was not found in the register"),
     "missing_value": RiskSignal(75, "high", "Required transaction field is missing"),
     "missing_required_value": RiskSignal(75, "high", "Required transaction field is missing"),
@@ -43,17 +43,17 @@ ISSUE_SIGNALS = {
     "duplicate_beneficiary_reference": RiskSignal(75, "high", "Duplicate beneficiary key in reference file"),
     "duplicate_budget_reference": RiskSignal(75, "high", "Duplicate budget key in reference file"),
     "possible_duplicate_payment": RiskSignal(70, "high", "Possible duplicate payment"),
-    "large_amount": RiskSignal(65, "medium", "Amount exceeds configured threshold"),
-    "unsupported_currency": RiskSignal(60, "medium", "Unsupported currency"),
+    "large_amount": RiskSignal(65, "medium", "Payment is above the review limit"),
+    "unsupported_currency": RiskSignal(60, "medium", "Currency is not in the expected list"),
     "missing_invoice_reference": RiskSignal(55, "medium", "Invoice/reference field is missing"),
-    "possible_vendor_match": RiskSignal(45, "medium", "Counterparty only matched vendor file fuzzily"),
+    "possible_vendor_match": RiskSignal(45, "medium", "Payee name may match an approved vendor, but needs confirmation"),
     "zero_amount": RiskSignal(35, "low", "Zero amount transaction"),
 }
 SEVERITY_FALLBACKS = {
     "error": RiskSignal(65, "high", "Validation error requires review"),
     "warning": RiskSignal(30, "medium", "Validation warning requires review"),
 }
-RARE_COUNTERPARTY_SIGNAL = RiskSignal(10, "low", "Counterparty appears once in file")
+RARE_COUNTERPARTY_SIGNAL = RiskSignal(10, "low", "Payee appears only once in this file")
 
 
 def score_issues(issues: pd.DataFrame) -> pd.DataFrame:
@@ -151,7 +151,12 @@ def _issue_types_by_transaction_row(issues: pd.DataFrame) -> dict[int, list[str]
 def _signal_for_issue(issue: dict[str, object]) -> RiskSignal:
     issue_type = str(issue.get("issue_type", ""))
     if issue_type in ISSUE_SIGNALS:
-        return ISSUE_SIGNALS[issue_type]
+        signal = ISSUE_SIGNALS[issue_type]
+        if issue_type == "possible_duplicate_payment":
+            related_ids = _display_text(issue.get("related_record_id"))
+            if related_ids:
+                return RiskSignal(signal.points, signal.band, f"Possible duplicate of {related_ids}")
+        return signal
     severity = str(issue.get("severity", "")).lower()
     return SEVERITY_FALLBACKS.get(severity, RiskSignal(10, "low", "Issue should be reviewed"))
 
@@ -229,6 +234,12 @@ def _display_key(value: object) -> object:
     if pd.isna(value):
         return ""
     return value
+
+
+def _display_text(value: object) -> str:
+    if pd.isna(value):
+        return ""
+    return str(value).strip()
 
 
 def _safe_int(value: object) -> int | None:

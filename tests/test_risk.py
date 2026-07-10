@@ -63,8 +63,8 @@ class RiskTests(unittest.TestCase):
 
         self.assertEqual(100, review.loc[0, "review_priority_score"])
         self.assertEqual("medium", review.loc[0, "review_priority_band"])
-        self.assertIn("Unsupported currency", review.loc[0, "review_priority_drivers"])
-        self.assertIn("Amount exceeds configured threshold", review.loc[0, "review_priority_drivers"])
+        self.assertIn("Currency is not in the expected list", review.loc[0, "review_priority_drivers"])
+        self.assertIn("Payment is above the review limit", review.loc[0, "review_priority_drivers"])
 
     def test_normal_transaction_remains_low_priority(self):
         dataframe = pd.DataFrame(
@@ -114,7 +114,7 @@ class RiskTests(unittest.TestCase):
 
         self.assertEqual([0, 0], small_review["review_priority_score"].tolist())
         self.assertEqual(10, large_review.loc[9, "review_priority_score"])
-        self.assertIn("Counterparty appears once in file", large_review.loc[9, "review_priority_drivers"])
+        self.assertIn("Payee appears only once in this file", large_review.loc[9, "review_priority_drivers"])
 
     def test_possible_vendor_match_is_explainable_medium_priority(self):
         issues = pd.DataFrame(
@@ -138,7 +138,7 @@ class RiskTests(unittest.TestCase):
         self.assertEqual(45, scored.loc[0, "review_priority_score"])
         self.assertEqual("medium", scored.loc[0, "review_priority_band"])
         self.assertEqual(
-            "Counterparty only matched vendor file fuzzily",
+            "Payee name may match an approved vendor, but needs confirmation",
             scored.loc[0, "review_priority_drivers"],
         )
 
@@ -193,7 +193,7 @@ class RiskTests(unittest.TestCase):
         second = score_issues(issues.iloc[::-1].reset_index(drop=True))
 
         self.assertEqual(
-            "Invalid transaction date; Unsupported currency",
+            "Invalid transaction date; Currency is not in the expected list",
             first.loc[0, "review_priority_drivers"],
         )
         self.assertEqual(

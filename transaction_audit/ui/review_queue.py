@@ -19,7 +19,8 @@ def render_review_queue(
     transaction_review: pd.DataFrame,
     key_prefix: str,
 ) -> None:
-    st.subheader("Priority review")
+    st.subheader("Transactions to review")
+    st.caption("Start with high-priority items. Select any row to see the evidence and the next review step.")
     reviewable_transactions = reviewable_transaction_rows(transaction_review)
     if reviewable_transactions.empty:
         if findings.empty:
@@ -37,10 +38,14 @@ def render_review_queue(
         st.info("No transactions match the selected filters.")
         return
 
-    st.dataframe(
+    selection = st.dataframe(
         queue[["priority", "finding", "amount", "payee_or_vendor", "transaction_id"]],
         width="stretch",
         hide_index=True,
+        key=f"{key_prefix}_review_queue_table",
+        on_select="rerun",
+        selection_mode="single-row",
+        row_height=46,
         column_config={
             "priority": st.column_config.TextColumn("Priority", width="small"),
             "finding": st.column_config.TextColumn("Finding", width="large"),
@@ -50,7 +55,15 @@ def render_review_queue(
         },
     )
 
-    render_selected_transaction_detail(queue, key_prefix=key_prefix)
+    selected_rows = list(selection.selection.rows)
+    if selected_rows:
+        render_selected_transaction_detail(
+            queue,
+            findings,
+            selected_index=selected_rows[0],
+        )
+    else:
+        st.info("Select a transaction above to see why it needs review.")
 
     if not findings.empty:
         with st.expander("View finding-level detail"):
@@ -92,50 +105,84 @@ def priority_review_filters(transaction_review: pd.DataFrame, key_prefix: str) -
     return filtered
 
 
-def render_selected_transaction_detail(queue: pd.DataFrame, key_prefix: str) -> None:
-    options = [
-        f"{row.transaction_id} - {row.finding}"
-        for row in queue.itertuples(index=False)
-    ]
-    selected = st.selectbox(
-        "Select a transaction to review",
-        options=options,
-        key=f"{key_prefix}_selected_transaction_detail",
-    )
-    if not selected:
-        return
-
-    selected_index = options.index(selected)
+def render_selected_transaction_detail(
+    queue: pd.DataFrame,
+    findings: pd.DataFrame,
+    selected_index: int,
+) -> None:
     row = queue.iloc[selected_index]
-    with st.container(border=True):
-        left, right = st.columns([1, 1])
-        left.markdown("**Transaction detail**")
-        left.write(f"Transaction ID: {row.get('transaction_id', '')}")
-        left.write(f"Date: {row.get('transaction_date', '')}")
-        left.write(f"Account: {row.get('account_id', '')}")
-        left.write(f"Currency: {row.get('currency', '')}")
-        left.write(f"Payee / vendor: {row.get('payee_or_vendor', '')}")
-        left.write(f"Amount: {row.get('amount', '')}")
-        right.markdown("**Why this was flagged**")
-        right.write(row.get("review_priority_drivers", ""))
+    transaction_findings = _findings_for_transaction(findings, row)
 
-    status_columns = st.columns([1, 2])
-    status_columns[0].selectbox(
-        "Review status",
-        options=[
-            "Needs review",
-            "Under review",
-            "Cleared - no issue",
-            "Cleared - adjustment needed",
-            "Escalate",
-        ],
-        key=f"{key_prefix}_review_status_{selected_index}",
-    )
-    status_columns[1].text_input(
-        "Review note",
-        placeholder="Add note for this session",
-        key=f"{key_prefix}_review_note_{selected_index}",
-    )
+    with st.container(border=True):
+        st.markdown(f"### {row.get('transaction_id', 'Transaction detail')}")
+        st.caption(str(row.get("finding", "")))
+        detail_column, evidence_column = st.columns([1, 1.5])
+
+        with detail_column:
+            st.markdown("**Payment details**")
+            _write_detail("Date", _format_date(row.get("transaction_date", "")))
+            _write_detail("Payee / vendor", row.get("payee_or_vendor", ""))
+            _write_detail("Amount", _format_amount(row.get("amount", ""), row.get("currency", "")))
+            _write_detail("Account", row.get("account_id", ""))
+            _write_detail("Invoice / reference", row.get("invoice_reference", ""))
+
+        with evidence_column:
+            st.markdown("**What needs checking**")
+            if transaction_findings.empty:
+                for driver in _split_drivers(row.get("review_priority_drivers", "")):
+                    st.markdown(f"- {driver}")
+                st.caption("Check the payment against its approval and supporting documents.")
+            else:
+                for finding in transaction_findings.to_dict("records"):
+                    st.markdown(f"**{finding.get('finding', 'Finding')}**")
+                    evidence = str(finding.get("evidence", "")).strip()
+                    if evidence:
+                        st.write(evidence)
+                    related = str(finding.get("related_record_id", "")).strip()
+                    if related:
+                        st.write(f"Related record(s): {related}")
+                    action = str(finding.get("recommended_action", "")).strip()
+                    if action:
+                        st.caption(f"Next step: {action}")
+
+
+def _findings_for_transaction(findings: pd.DataFrame, row: pd.Series) -> pd.DataFrame:
+    if findings.empty:
+        return findings
+
+    row_number = str(row.get("row_number", "")).strip()
+    transaction_id = str(row.get("transaction_id", "")).strip()
+    matches = pd.Series(False, index=findings.index)
+    if row_number and "row_number" in findings:
+        matches |= findings["row_number"].astype("string").str.strip().eq(row_number)
+    if transaction_id and "transaction_id" in findings:
+        matches |= findings["transaction_id"].astype("string").str.strip().eq(transaction_id)
+    return findings[matches].copy()
+
+
+def _split_drivers(value: object) -> list[str]:
+    return [driver.strip() for driver in str(value).split(";") if driver.strip()]
+
+
+def _write_detail(label: str, value: object) -> None:
+    display_value = str(value).strip()
+    st.write(f"{label}: {display_value or 'Not provided'}")
+
+
+def _format_amount(amount: object, currency: object) -> str:
+    try:
+        amount_text = f"{float(amount):,.2f}"
+    except (TypeError, ValueError):
+        amount_text = str(amount).strip() or "Not provided"
+    currency_text = str(currency).strip()
+    return f"{currency_text} {amount_text}".strip()
+
+
+def _format_date(value: object) -> str:
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed):
+        return str(value).strip() or "Not provided"
+    return parsed.strftime("%d %b %Y")
 
 
 def review_findings_with_filters(findings: pd.DataFrame, key_prefix: str) -> pd.DataFrame:

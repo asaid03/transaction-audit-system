@@ -14,6 +14,43 @@ from transaction_audit.workflow import (
 )
 
 
+FIELD_LABELS = {
+    "transaction_id": "Transaction or reference ID",
+    "transaction_date": "Payment date",
+    "account_id": "Account or cost code",
+    "amount": "Payment amount",
+    "currency": "Currency",
+    "counterparty": "Payee or vendor",
+    "invoice_reference": "Invoice or payment reference",
+    "vendor_id": "Vendor ID",
+    "vendor_name": "Vendor name",
+    "beneficiary_id": "Beneficiary ID",
+    "beneficiary_name": "Beneficiary name",
+    "expected_amount": "Expected payment amount",
+    "budget_line_id": "Budget line ID",
+    "budget_category": "Budget category",
+    "approved_amount": "Approved budget amount",
+}
+FIELD_HELP = {
+    "transaction_id": "Choose the column that identifies each payment or bank entry.",
+    "transaction_date": "Choose the date the payment was made or posted.",
+    "account_id": "Choose the ledger account, cost centre, or account code.",
+    "amount": "Choose the column containing the payment value.",
+    "currency": "Choose the currency code, such as USD, GBP, or EUR.",
+    "counterparty": "Choose the person or organisation that received the payment.",
+    "invoice_reference": "Choose the invoice, voucher, or payment reference when available.",
+}
+
+
+def field_label(canonical_field: str, required: bool = False) -> str:
+    label = FIELD_LABELS.get(canonical_field, canonical_field.replace("_", " ").title())
+    return f"{label} (required)" if required else label
+
+
+def field_help(canonical_field: str) -> str | None:
+    return FIELD_HELP.get(canonical_field)
+
+
 def render_dataset_mapping(
     dataset_type: DatasetType,
     raw_dataframe: pd.DataFrame,
@@ -58,11 +95,12 @@ def render_dataset_mapping(
 
         for index, canonical_field in enumerate(allowed_mapping_columns(dataset_type)):
             inferred_source = mapping_plan.canonical_to_source.get(canonical_field, "")
-            label = f"{canonical_field} *" if canonical_field in required_fields else canonical_field
+            label = field_label(canonical_field, required=canonical_field in required_fields)
             selected_source = mapping_columns[index % 2].selectbox(
                 label,
                 options=column_options,
                 index=column_options.index(inferred_source) if inferred_source in column_options else 0,
+                help=field_help(canonical_field),
                 key=f"{dataset_type.value}_{source_name}_{canonical_field}",
             )
             canonical_to_source[canonical_field] = selected_source or None
@@ -72,7 +110,7 @@ def render_dataset_mapping(
     if not schema_result.has_required_schema:
         st.warning(
             f"{definition.display_name} needs required fields mapped: "
-            + ", ".join(schema_result.missing_required)
+            + ", ".join(field_label(field) for field in schema_result.missing_required)
         )
     elif selected_profile is None:
         with st.expander(f"Save {definition.display_name.lower()} column mapping"):

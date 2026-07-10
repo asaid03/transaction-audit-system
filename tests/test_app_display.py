@@ -121,6 +121,7 @@ class AppDisplayTest(unittest.TestCase):
                     "ml_anomaly_drivers": "Invoice/reference repeats",
                     "row_number": 4,
                     "transaction_id": "TXN-003",
+                    "transaction_date": pd.Timestamp("2026-05-08"),
                 },
             ]
         )
@@ -130,6 +131,7 @@ class AppDisplayTest(unittest.TestCase):
         self.assertEqual([85], display["ml_anomaly_score"].tolist())
         self.assertEqual(["High"], display["ml_anomaly_band"].tolist())
         self.assertEqual(display.iloc[0]["transaction_id"], "TXN-003")
+        self.assertEqual(display.iloc[0]["transaction_date"], "08 May 2026")
 
 
 if __name__ == "__main__":

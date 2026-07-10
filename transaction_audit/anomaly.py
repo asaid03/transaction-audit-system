@@ -170,7 +170,10 @@ def _add_amount_signals(
             signals_by_index,
             index,
             model.config.amount_signal_points,
-            f"Amount is at or above trained high-amount threshold {model.amount_threshold:,.2f}",
+            (
+                "Payment is higher than almost all other payments in this file "
+                f"(above {model.amount_threshold:,.2f})"
+            ),
         )
 
 
@@ -252,7 +255,10 @@ def _add_isolation_forest_signals(
             signals_by_index,
             index,
             model.config.isolation_forest_points,
-            "Isolation Forest marked this transaction unusual across combined features",
+            (
+                "The combination of amount, date, payee, and other payment details "
+                "looks unusual compared with this file"
+            ),
         )
 
 

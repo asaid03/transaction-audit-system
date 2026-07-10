@@ -147,6 +147,9 @@ def display_ml_anomalies(anomalies: pd.DataFrame) -> pd.DataFrame:
     display = clean_display_frame(display)
     if "ml_anomaly_band" in display:
         display["ml_anomaly_band"] = display["ml_anomaly_band"].astype("string").str.title()
+    if "transaction_date" in display:
+        parsed_dates = pd.to_datetime(display["transaction_date"], errors="coerce")
+        display["transaction_date"] = parsed_dates.dt.strftime("%d %b %Y").fillna("")
     return display
 
 

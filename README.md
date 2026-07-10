@@ -29,7 +29,7 @@ Checks include:
 - missing required columns
 - missing required values
 - invalid amounts
-- zero amounts and configured-threshold large amounts
+- zero amounts and payments above the review limit
 - invalid dates
 - unsupported currencies
 - duplicate transaction IDs
@@ -84,11 +84,12 @@ Start with `review_findings`. It is the human-facing sheet with review-priority 
 
 ## App Layout
 
-The Streamlit app is intentionally review-first:
+The Streamlit prototype is intentionally review-first:
 
 - upload and mapping appear only when needed
 - run status and key counts appear before detailed tables
-- review queues are the primary working view
+- reviewers select a finding row to see payment details, evidence, related records, and the recommended next step
+- audit checks and unusual-pattern ML review remain separate views
 - raw input data, schema mappings, cleaning details, skipped checks, and CSV downloads sit behind evidence/detail panels
 
 ## Rules Reference

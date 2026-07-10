@@ -36,6 +36,21 @@ def render_global_styles() -> None:
         div[data-testid="stMetricValue"] {
             font-weight: 700;
         }
+        div[data-testid="stDataFrame"] {
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        div[data-testid="stAlert"] {
+            border-radius: 6px;
+        }
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 1.5rem;
+        }
+        .stTabs [data-baseweb="tab"] {
+            padding-left: 0;
+            padding-right: 0;
+        }
         div[data-testid="stFileUploader"] section {
             border-color: rgba(0, 137, 123, 0.45);
             background: rgba(0, 137, 123, 0.04);
@@ -50,17 +65,19 @@ def render_global_styles() -> None:
 
 
 def render_page_header() -> None:
-    st.title("Transaction Audit")
-    st.caption("Audit support for transaction files, reference checks, and exception review.")
+    st.title("Transaction Review")
+    st.caption("Find data errors, possible duplicate payments, and unusual activity that needs a closer look.")
 
 
 def render_stepper(active_step: str) -> None:
-    steps = [("upload", "1", "Upload"), ("review", "2", "Review"), ("export", "3", "Export")]
+    steps = [("upload", "1", "Upload"), ("review", "2", "Review"), ("export", "3", "Download")]
     labels = []
     for step_id, number, label in steps:
-        prefix = "[x]" if step_id == active_step else "[ ]"
-        labels.append(f"{prefix} {number}. {label}")
-    st.caption("  >  ".join(labels))
+        if step_id == active_step:
+            labels.append(f"**{number}. {label}**")
+        else:
+            labels.append(f"{number}. {label}")
+    st.markdown(" &nbsp;&nbsp; / &nbsp;&nbsp; ".join(labels))
 
 
 def render_summary_banner(title: str, message: str, state: str = "ok") -> None:

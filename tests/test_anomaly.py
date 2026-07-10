@@ -80,7 +80,7 @@ class AnomalyTests(unittest.TestCase):
         self.assertTrue(
             large_rows["ml_anomaly_drivers"]
             .astype(str)
-            .str.contains("trained high-amount threshold", regex=False)
+            .str.contains("higher than almost all other payments", regex=False)
             .all()
         )
 

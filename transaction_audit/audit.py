@@ -89,7 +89,7 @@ ISSUE_GUIDANCE = {
     },
     "possible_duplicate_payment": {
         "finding": "Possible duplicate payment",
-        "why_it_matters": "The payment resembles another transaction by date, amount, and counterparty.",
+        "why_it_matters": "The payment resembles another transaction by date, amount, and payee.",
         "recommended_action": "Compare the matching payments and confirm whether both should exist.",
     },
     "missing_invoice_reference": {
@@ -133,13 +133,13 @@ ISSUE_GUIDANCE = {
         "recommended_action": "Correct the date format and rerun the audit.",
     },
     "unsupported_currency": {
-        "finding": "Currency is outside the configured review list",
+        "finding": "Unexpected currency",
         "why_it_matters": "The transaction uses a currency that may be outside the expected audit scope.",
-        "recommended_action": "Confirm whether this currency is valid for the audit period or update the allowed currency configuration.",
+        "recommended_action": "Confirm whether this currency belongs in the review and whether conversion evidence is available.",
     },
     "large_amount": {
         "finding": "Large amount transaction",
-        "why_it_matters": "The transaction meets or exceeds the configured large-amount review threshold.",
+        "why_it_matters": "The payment is above the amount selected for additional review.",
         "recommended_action": "Confirm approval evidence, supporting documentation, and whether enhanced review is required.",
     },
 }

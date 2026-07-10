@@ -84,7 +84,7 @@ def check_amounts(
                 field="amount",
                 issue_type="large_amount",
                 severity="warning",
-                message=f"Amount is at or above {config.large_amount_threshold:,.2f}.",
+                message=f"Payment is above the review limit of {config.large_amount_threshold:,.2f}.",
             )
         )
 
@@ -128,7 +128,7 @@ def check_currencies(
                 field="currency",
                 issue_type="unsupported_currency",
                 severity="warning",
-                message=f"Currency '{row['currency']}' is outside the allowed list.",
+                message=f"Currency '{row['currency']}' is not in the expected currency list.",
             )
         )
 
@@ -160,7 +160,20 @@ def check_duplicate_transaction_ids(checked: pd.DataFrame) -> list[ValidationIss
         & checked["transaction_id"].duplicated(keep=False)
     )
 
+    duplicate_rows: dict[str, list[int]] = {}
     for position, row in rows_matching(checked, duplicate_mask):
+        transaction_id = _clean_optional(row["transaction_id"])
+        if transaction_id is not None:
+            duplicate_rows.setdefault(transaction_id, []).append(position)
+
+    for position, row in rows_matching(checked, duplicate_mask):
+        transaction_id = _clean_optional(row["transaction_id"])
+        matching_rows = [
+            row_number
+            for row_number in duplicate_rows.get(transaction_id or "", [])
+            if row_number != position
+        ]
+        row_text = ", ".join(str(row_number) for row_number in matching_rows)
         issues.append(
             make_issue(
                 row_number=position,
@@ -168,7 +181,8 @@ def check_duplicate_transaction_ids(checked: pd.DataFrame) -> list[ValidationIss
                 field="transaction_id",
                 issue_type="duplicate_transaction_id",
                 severity="error",
-                message="Transaction ID appears more than once in this file.",
+                message=f"This transaction ID is also used on source row(s) {row_text}.",
+                related_record_id=transaction_id,
             )
         )
 
@@ -190,7 +204,15 @@ def check_possible_duplicate_payments(
     if usable.empty:
         return []
 
-    flagged_indexes: set[Hashable] = set()
+    matches: dict[Hashable, set[Hashable]] = {}
+    match_reasons: dict[Hashable, set[str]] = {}
+
+    def add_match(left: Hashable, right: Hashable, reason: str) -> None:
+        matches.setdefault(left, set()).add(right)
+        matches.setdefault(right, set()).add(left)
+        match_reasons.setdefault(left, set()).add(reason)
+        match_reasons.setdefault(right, set()).add(reason)
+
     for _, group in usable.groupby(group_columns, dropna=False):
         if group["transaction_id"].nunique() < 2:
             continue
@@ -205,7 +227,15 @@ def check_possible_duplicate_payments(
             ]
             for _, invoice_group in invoice_group_candidates.groupby("_invoice_reference", dropna=False):
                 if invoice_group["transaction_id"].nunique() >= 2 and len(invoice_group) > 1:
-                    flagged_indexes.update(invoice_group.index.tolist())
+                    invoice_indexes = list(invoice_group.index)
+                    invoice_reference = str(invoice_group["_invoice_reference"].iloc[0])
+                    for offset, left_index in enumerate(invoice_indexes):
+                        for right_index in invoice_indexes[offset + 1 :]:
+                            add_match(
+                                left_index,
+                                right_index,
+                                f"the same invoice/reference ({invoice_reference})",
+                            )
 
         ordered = group.sort_values("transaction_date")
         ordered_indexes = list(ordered.index)
@@ -218,28 +248,46 @@ def check_possible_duplicate_payments(
                 ordered_ids[offset] != ordered_ids[offset - 1]
                 and days_between <= config.duplicate_payment_window_days
             ):
-                flagged_indexes.add(ordered_indexes[offset - 1])
-                flagged_indexes.add(ordered_indexes[offset])
+                add_match(
+                    ordered_indexes[offset - 1],
+                    ordered_indexes[offset],
+                    (
+                        "the same account, payee, amount and currency within "
+                        f"{config.duplicate_payment_window_days} days"
+                    ),
+                )
 
-    if not flagged_indexes:
+    if not matches:
         return []
 
-    duplicate_payment_mask = checked.index.isin(flagged_indexes)
-    return [
-        make_issue(
-            row_number=position,
-            row=row,
-            field="transaction_id",
-            issue_type="possible_duplicate_payment",
-            severity="warning",
-            message=(
-                "Possible duplicate payment: same invoice reference or same account, "
-                "counterparty, amount, and currency within "
-                f"{config.duplicate_payment_window_days} days."
-            ),
+    issues = []
+    for index in checked.index:
+        if index not in matches:
+            continue
+
+        row = checked.loc[index].to_dict()
+        peer_ids = [
+            _clean_optional(checked.loc[peer_index, "transaction_id"])
+            for peer_index in matches[index]
+        ]
+        peer_ids = sorted({peer_id for peer_id in peer_ids if peer_id is not None})
+        reasons = sorted(match_reasons.get(index, set()))
+        related_ids = ", ".join(peer_ids)
+        reason_text = " and ".join(reasons)
+        position = checked.index.get_loc(index) + 2
+        issues.append(
+            make_issue(
+                row_number=int(position),
+                row=row,
+                field="transaction_id",
+                issue_type="possible_duplicate_payment",
+                severity="warning",
+                message=f"Resembles transaction(s) {related_ids} because it has {reason_text}.",
+                related_record_id=related_ids,
+            )
         )
-        for position, row in rows_matching(checked, pd.Series(duplicate_payment_mask, index=checked.index))
-    ]
+
+    return issues
 
 
 def rows_matching(dataframe: pd.DataFrame, mask: pd.Series):

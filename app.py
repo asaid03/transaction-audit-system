@@ -25,7 +25,7 @@ from transaction_audit.ui.components import (
     render_stepper,
 )
 from transaction_audit.ui.display import display_mapping_summary
-from transaction_audit.ui.mapping import render_dataset_mapping
+from transaction_audit.ui.mapping import field_help, field_label, render_dataset_mapping
 from transaction_audit.ui.results import render_bundle_results, render_single_file_results
 from transaction_audit.validation import validate_transactions
 from transaction_audit.workflow import build_mapping_plan
@@ -38,13 +38,13 @@ def main() -> None:
 
     profiles = list_import_profiles()
     workflow = st.radio(
-        "Review setup",
-        options=["Transaction file only", "Transactions with reference files"],
+        "What do you want to check?",
+        options=["Transactions only", "Transactions and approved lists"],
         horizontal=True,
-        help="Start with one transaction file. Add reference files when you want vendor, beneficiary, or budget checks.",
+        help="Use approved lists when you want to confirm payees, beneficiaries, or budget lines.",
     )
 
-    if workflow == "Transactions with reference files":
+    if workflow == "Transactions and approved lists":
         render_multi_file_reconciliation(profiles)
         return
 
@@ -53,7 +53,7 @@ def main() -> None:
     with middle:
         with st.container(border=True):
             st.markdown("### Upload your transaction file")
-            st.caption("CSV or Excel - bank exports, mobile money statements, and accounting system exports are supported.")
+            st.caption("Use a CSV or Excel export from your bank, mobile money platform, or accounting system.")
             uploaded_file = st.file_uploader("Transaction file", type=["csv", "xlsx", "xls"])
 
     if uploaded_file is None:
@@ -62,7 +62,7 @@ def main() -> None:
             [
                 "Use a CSV or Excel export from a bank, mobile money platform, ERP, or ledger.",
                 "If column names are unusual, auto-detect will try first and manual mapping appears only when needed.",
-                "Results will be shown as review tasks, with detailed evidence available separately.",
+                "You will get a short list of payments to review, with an explanation and suggested next step.",
             ],
         )
         st.stop()
@@ -102,9 +102,10 @@ def main() -> None:
             for index, canonical_field in enumerate(REQUIRED_COLUMNS):
                 inferred_source = mapping_plan.canonical_to_source.get(canonical_field, "")
                 selected_source = mapping_columns[index % 2].selectbox(
-                    canonical_field,
+                    field_label(canonical_field, required=True),
                     options=column_options,
                     index=column_options.index(inferred_source) if inferred_source in column_options else 0,
+                    help=field_help(canonical_field),
                     key=f"schema_{uploaded_file.name}_{selected_profile_name}_{canonical_field}",
                 )
                 canonical_to_source[canonical_field] = selected_source or None

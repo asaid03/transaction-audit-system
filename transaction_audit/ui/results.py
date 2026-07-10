@@ -65,9 +65,9 @@ def render_single_file_results(
                 "tone": "neutral",
             },
             {
-                "label": "Findings",
+                "label": "Needs review",
                 "value": summary["issues_found"],
-                "subtitle": "needs review",
+                "subtitle": "items found by audit checks",
                 "tone": "neutral",
             },
             {
@@ -77,9 +77,9 @@ def render_single_file_results(
                 "tone": "amber" if priority_count(transaction_review, "high") else "neutral",
             },
             {
-                "label": "ML anomalies",
+                "label": "Unusual patterns",
                 "value": ml_anomaly_count,
-                "subtitle": "separate model view",
+                "subtitle": "separate ML review",
                 "tone": "amber" if ml_anomaly_count else "neutral",
             },
             {
@@ -91,18 +91,21 @@ def render_single_file_results(
         ]
     )
 
-    tab_review, tab_audit, tab_settings = st.tabs(["Priority Review", "Audit Pack", "Settings"])
+    tab_review, tab_audit, tab_settings = st.tabs(["Review Findings", "Download", "File Details"])
 
     with tab_review:
         review_mode = st.radio(
-            "Review view",
-            options=["Findings review", "ML anomaly review"],
+            "Choose a review",
+            options=["Audit checks", "Unusual patterns (ML)"],
             horizontal=True,
             key="single_review_mode",
         )
-        if review_mode == "ML anomaly review":
-            st.caption("Model-based anomaly review. This is separate from audit findings and is not a fraud conclusion.")
-            render_ml_anomaly_table(anomaly_frame)
+        if review_mode == "Unusual patterns (ML)":
+            st.caption(
+                "This view finds payments that look different from the rest of this file. "
+                "It is a prompt for human review, not a fraud conclusion."
+            )
+            render_ml_anomaly_table(anomaly_frame, key_prefix="single")
         else:
             render_review_queue(findings_frame, transaction_review, key_prefix="single")
 
@@ -114,7 +117,7 @@ def render_single_file_results(
             bullet_points=[
                 "Review findings and recommended actions",
                 "Transaction-level review queue",
-                "ML anomaly review",
+                "Unusual pattern review (ML)",
                 "Source transactions and column mapping",
             ],
         )
@@ -188,9 +191,9 @@ def render_bundle_results(
                 "tone": "neutral",
             },
             {
-                "label": "Findings",
+                "label": "Needs review",
                 "value": len(combined_issues),
-                "subtitle": "needs review",
+                "subtitle": "items found by audit checks",
                 "tone": "neutral",
             },
             {
@@ -200,9 +203,9 @@ def render_bundle_results(
                 "tone": "amber" if priority_count(transaction_review, "high") else "neutral",
             },
             {
-                "label": "ML anomalies",
+                "label": "Unusual patterns",
                 "value": ml_anomaly_count,
-                "subtitle": "separate model view",
+                "subtitle": "separate ML review",
                 "tone": "amber" if ml_anomaly_count else "neutral",
             },
             {
@@ -220,21 +223,24 @@ def render_bundle_results(
         ]
     )
 
-    tab_review, tab_audit, tab_settings = st.tabs(["Priority Review", "Audit Pack", "Settings"])
+    tab_review, tab_audit, tab_settings = st.tabs(["Review Findings", "Download", "File Details"])
 
     with tab_review:
         review_mode = st.radio(
-            "Review view",
-            options=["Findings review", "ML anomaly review"],
+            "Choose a review",
+            options=["Audit checks", "Unusual patterns (ML)"],
             horizontal=True,
             key="multi_review_mode",
         )
-        if review_mode == "ML anomaly review":
-            st.caption("Model-based anomaly review. This is separate from audit findings and is not a fraud conclusion.")
-            render_ml_anomaly_table(anomaly_frame)
+        if review_mode == "Unusual patterns (ML)":
+            st.caption(
+                "This view finds payments that look different from the rest of this file. "
+                "It is a prompt for human review, not a fraud conclusion."
+            )
+            render_ml_anomaly_table(anomaly_frame, key_prefix="multi")
         else:
             render_review_queue(review_findings, transaction_review, key_prefix="multi")
-        if len(skipped) and review_mode == "Findings review":
+        if len(skipped) and review_mode == "Audit checks":
             st.caption(
                 f"{len(skipped)} optional check(s) were skipped because a reference file or field was not available."
             )
@@ -309,26 +315,68 @@ def anomaly_count(anomaly_frame: pd.DataFrame) -> int:
     return int(pd.to_numeric(anomaly_frame["ml_anomaly_score"], errors="coerce").fillna(0).ge(50).sum())
 
 
-def render_ml_anomaly_table(anomaly_frame: pd.DataFrame) -> None:
+def render_ml_anomaly_table(anomaly_frame: pd.DataFrame, key_prefix: str) -> None:
     display = display_ml_anomalies(anomaly_frame)
     if display.empty:
-        st.info("No model-scored anomaly rows above the review threshold.")
+        st.info("No payments were unusual enough to appear in this review.")
         return
 
-    st.dataframe(
-        display,
+    st.subheader("Unusual payments to review")
+    st.caption("Select a row to see the model score and the patterns that influenced it.")
+    visible_columns = [
+        column
+        for column in [
+            "ml_anomaly_score",
+            "ml_anomaly_drivers",
+            "transaction_date",
+            "amount",
+            "counterparty",
+            "transaction_id",
+        ]
+        if column in display
+    ]
+    selection = st.dataframe(
+        display[visible_columns],
         width="stretch",
         hide_index=True,
+        key=f"{key_prefix}_ml_anomaly_table",
+        on_select="rerun",
+        selection_mode="single-row",
+        row_height=46,
         column_config={
-            "ml_anomaly_score": st.column_config.NumberColumn("ML score", width="small"),
-            "ml_anomaly_band": st.column_config.TextColumn("ML band", width="small"),
-            "ml_anomaly_drivers": st.column_config.TextColumn("Why flagged by ML", width="large"),
-            "row_number": st.column_config.TextColumn("Row", width="small"),
+            "ml_anomaly_score": st.column_config.NumberColumn("Score", width="small"),
+            "ml_anomaly_drivers": st.column_config.TextColumn("Why it looks unusual", width="large"),
             "transaction_id": st.column_config.TextColumn("Transaction ID", width="small"),
             "transaction_date": st.column_config.TextColumn("Date", width="small"),
-            "counterparty": st.column_config.TextColumn("Payee or vendor", width="medium"),
+            "amount": st.column_config.NumberColumn("Amount", format="%.2f", width="small"),
+            "counterparty": st.column_config.TextColumn("Payee / vendor", width="medium"),
         },
     )
+
+    selected_rows = list(selection.selection.rows)
+    if not selected_rows:
+        st.info("Select a payment above to see why it looks unusual.")
+        return
+
+    row = display.iloc[selected_rows[0]]
+    with st.container(border=True):
+        st.markdown(f"### {row.get('transaction_id', 'Payment detail')}")
+        score_column, detail_column = st.columns([1, 2])
+        score_column.metric("Unusual pattern score", int(row.get("ml_anomaly_score", 0)))
+        score_column.caption("Higher scores mean the payment differs more from the rest of this file.")
+        detail_column.markdown("**What made this payment stand out**")
+        detail_column.write(
+            f"{row.get('transaction_date', '')} | {row.get('counterparty', '')} | "
+            f"{row.get('currency', '')} {row.get('amount', '')}"
+        )
+        drivers = [
+            driver.strip()
+            for driver in str(row.get("ml_anomaly_drivers", "")).split(";")
+            if driver.strip()
+        ]
+        for driver in drivers:
+            detail_column.markdown(f"- {driver}")
+        detail_column.caption("Next step: compare this payment with its approval and supporting documents.")
 
 
 def render_audit_pack_download(
@@ -341,10 +389,10 @@ def render_audit_pack_download(
     left, middle, right = st.columns([1, 2, 1])
     with middle:
         with st.container(border=True):
-            st.subheader("Download audit pack")
-            st.caption("Excel workbook for human review and audit evidence.")
+            st.subheader("Download your review pack")
+            st.caption("An Excel file containing the findings, evidence, source transactions, and file details.")
             st.download_button(
-                "Download Audit Workbook",
+                "Download Excel review pack",
                 data=audit_workbook,
                 file_name=file_name,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
