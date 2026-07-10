@@ -19,12 +19,13 @@ from transaction_audit.schema import apply_schema, source_mapping_from_canonical
 from transaction_audit.ui.components import (
     render_cleaning_notice,
     render_empty_start,
+    render_global_styles,
     render_page_header,
     render_run_status,
+    render_stepper,
 )
 from transaction_audit.ui.display import display_mapping_summary
 from transaction_audit.ui.mapping import render_dataset_mapping
-from transaction_audit.ui.profiles import render_profile_manager
 from transaction_audit.ui.results import render_bundle_results, render_single_file_results
 from transaction_audit.validation import validate_transactions
 from transaction_audit.workflow import build_mapping_plan
@@ -32,26 +33,28 @@ from transaction_audit.workflow import build_mapping_plan
 
 def main() -> None:
     st.set_page_config(page_title="Transaction Audit", layout="wide")
+    render_global_styles()
     render_page_header()
 
     profiles = list_import_profiles()
     workflow = st.radio(
-        "Choose audit mode",
-        options=["Single-file validation", "Multi-file reconciliation"],
+        "Review setup",
+        options=["Transaction file only", "Transactions with reference files"],
         horizontal=True,
+        help="Start with one transaction file. Add reference files when you want vendor, beneficiary, or budget checks.",
     )
 
-    if workflow == "Multi-file reconciliation":
+    if workflow == "Transactions with reference files":
         render_multi_file_reconciliation(profiles)
-        render_profile_manager(profiles)
         return
 
-    st.markdown(
-        "Upload one transaction file to check whether the data is usable for review. "
-        "The app will clean bank-style exports when it can, map columns, flag exceptions, "
-        "and create an audit workbook."
-    )
-    uploaded_file = st.file_uploader("Transaction file", type=["csv", "xlsx", "xls"])
+    render_stepper("upload")
+    left, middle, right = st.columns([1, 2, 1])
+    with middle:
+        with st.container(border=True):
+            st.markdown("### Upload your transaction file")
+            st.caption("CSV or Excel - bank exports, mobile money statements, and accounting system exports are supported.")
+            uploaded_file = st.file_uploader("Transaction file", type=["csv", "xlsx", "xls"])
 
     if uploaded_file is None:
         render_empty_start(
@@ -62,22 +65,27 @@ def main() -> None:
                 "Results will be shown as review tasks, with detailed evidence available separately.",
             ],
         )
-        render_profile_manager(profiles)
         st.stop()
 
     try:
-        raw_transactions = load_transactions(uploaded_file, filename=uploaded_file.name)
-        raw_transactions, cleaning_result = maybe_clean_transactions(raw_transactions)
+        with st.spinner("Analysing transactions..."):
+            raw_transactions = load_transactions(uploaded_file, filename=uploaded_file.name)
+            raw_transactions, cleaning_result = maybe_clean_transactions(raw_transactions)
         render_cleaning_notice(cleaning_result)
         auto_mapping_plan = build_mapping_plan(raw_transactions)
 
         column_options = [""] + [str(column) for column in raw_transactions.columns]
 
-        with st.expander("Schema mapping", expanded=not auto_mapping_plan.auto_schema.has_required_schema):
+        if auto_mapping_plan.auto_schema.has_required_schema:
+            st.success("Columns detected automatically.")
+        else:
+            st.warning("We could not automatically read this file format. Please map the columns below.")
+
+        with st.expander("Adjust column mapping", expanded=not auto_mapping_plan.auto_schema.has_required_schema):
             transaction_profiles = profiles_for_dataset(profiles, DatasetType.TRANSACTIONS)
             profile_options = {"Auto-detect": None}
             profile_options.update({profile.display_name: profile for profile in transaction_profiles})
-            selected_profile_name = st.selectbox("Import profile", options=list(profile_options))
+            selected_profile_name = st.selectbox("Saved column mapping", options=list(profile_options))
             selected_profile = profile_options[selected_profile_name]
             mapping_plan = build_mapping_plan(raw_transactions, selected_profile)
 
@@ -87,7 +95,7 @@ def main() -> None:
                     + ", ".join(mapping_plan.missing_profile_sources)
                 )
 
-            st.caption("Map your file columns to the transaction fields used by the validation engine.")
+            st.caption("Map your file columns to the fields needed for review.")
             canonical_to_source = {}
             mapping_columns = st.columns(2)
 
@@ -102,59 +110,70 @@ def main() -> None:
                 canonical_to_source[canonical_field] = selected_source or None
 
         source_to_canonical = source_mapping_from_canonical(raw_transactions, canonical_to_source)
-        schema_result = apply_schema(raw_transactions, source_to_canonical=source_to_canonical)
-        result = validate_transactions(schema_result.transactions)
-        summary = build_audit_summary(result, uploaded_file.name)
+        with st.spinner("Preparing review..."):
+            schema_result = apply_schema(raw_transactions, source_to_canonical=source_to_canonical)
+            result = validate_transactions(schema_result.transactions)
+            summary = build_audit_summary(result, uploaded_file.name)
         summary["import_profile"] = selected_profile.display_name if selected_profile else "Auto-detect"
 
-        with st.expander("Save import profile"):
-            profile_name = st.text_input("Profile name", placeholder="Example: ERP export")
+        with st.expander("Save column mapping"):
+            profile_name = st.text_input("Mapping name", placeholder="Example: ERP export")
             profile_description = st.text_input("Description", placeholder="Optional source/system note")
-            if st.button("Save profile"):
+            if st.button("Save mapping"):
                 profile = save_import_profile(
                     profile_name,
                     schema_result.source_to_canonical,
                     description=profile_description,
                 )
-                st.success(f"Saved profile: {profile.display_name}")
+                st.success(f"Saved mapping: {profile.display_name}")
                 st.rerun()
     except Exception as exc:
         st.error(f"Could not process file: {exc}")
         st.stop()
 
-    render_single_file_results(result, schema_result, summary)
-    render_profile_manager(profiles)
+    render_stepper("review")
+    render_single_file_results(result, schema_result, summary, profiles=profiles)
 
 
 def render_multi_file_reconciliation(profiles) -> None:
-    st.markdown(
-        "Upload transactions plus any available reference files. The transaction file is required; "
-        "vendor, beneficiary, and budget files improve the review by checking whether payments match approved records."
-    )
+    render_stepper("upload")
+    st.markdown("Upload transactions, then add any reference files you have for extra checks.")
 
     upload_columns = st.columns(2)
     with upload_columns[0]:
-        transaction_file = st.file_uploader(
-            "Transactions (required)",
-            type=["csv", "xlsx", "xls"],
-            key="phase2_transactions",
-        )
-        beneficiary_file = st.file_uploader(
-            "Beneficiaries (optional)",
-            type=["csv", "xlsx", "xls"],
-            key="phase2_beneficiaries",
-        )
+        with st.container(border=True):
+            st.markdown("### Transaction file")
+            st.caption("Required - bank, mobile money, or accounting export.")
+            transaction_file = st.file_uploader(
+                "Transactions (required)",
+                type=["csv", "xlsx", "xls"],
+                key="phase2_transactions",
+            )
+        with st.container(border=True):
+            st.markdown("### Beneficiary register")
+            st.caption("Optional - expected recipients and payment amounts.")
+            beneficiary_file = st.file_uploader(
+                "Beneficiary register (optional)",
+                type=["csv", "xlsx", "xls"],
+                key="phase2_beneficiaries",
+            )
     with upload_columns[1]:
-        vendor_file = st.file_uploader(
-            "Vendors / suppliers (optional)",
-            type=["csv", "xlsx", "xls"],
-            key="phase2_vendors",
-        )
-        budget_file = st.file_uploader(
-            "Budget (optional)",
-            type=["csv", "xlsx", "xls"],
-            key="phase2_budget",
-        )
+        with st.container(border=True):
+            st.markdown("### Approved vendor list")
+            st.caption("Optional - suppliers or payees approved for payment.")
+            vendor_file = st.file_uploader(
+                "Approved vendor list (optional)",
+                type=["csv", "xlsx", "xls"],
+                key="phase2_vendors",
+            )
+        with st.container(border=True):
+            st.markdown("### Budget lines")
+            st.caption("Optional - approved spend by line or category.")
+            budget_file = st.file_uploader(
+                "Budget lines (optional)",
+                type=["csv", "xlsx", "xls"],
+                key="phase2_budget",
+            )
 
     if transaction_file is None:
         render_empty_start(
@@ -171,7 +190,7 @@ def render_multi_file_reconciliation(profiles) -> None:
         st.warning("Add at least one reference file so the app can reconcile transactions against approved records.")
         return
 
-    adjust_mappings = st.checkbox("Review or adjust schema mappings", value=False)
+    adjust_mappings = st.checkbox("Review or adjust column mappings", value=False)
 
     try:
         uploaded_files = {
@@ -188,7 +207,8 @@ def render_multi_file_reconciliation(profiles) -> None:
             if uploaded_file is None:
                 continue
 
-            raw_dataframe = load_dataset(uploaded_file, filename=uploaded_file.name)
+            with st.spinner(f"Reading {uploaded_file.name}..."):
+                raw_dataframe = load_dataset(uploaded_file, filename=uploaded_file.name)
             cleaning_result = None
             if dataset_type == DatasetType.TRANSACTIONS:
                 raw_dataframe, cleaning_result = maybe_clean_transactions(raw_dataframe)
@@ -222,21 +242,23 @@ def render_multi_file_reconciliation(profiles) -> None:
                 title="Mapping required",
                 message=(
                     "Some files could not be understood yet. Fix the required "
-                    "mappings before reconciliation can run."
+                    "column mappings before review can continue."
                 ),
                 state="error",
             )
-            st.dataframe(display_mapping_summary(mapping_summary), use_container_width=True, hide_index=True)
+            st.dataframe(display_mapping_summary(mapping_summary), width="stretch", hide_index=True)
             st.error("Needs mapping: " + ", ".join(blocked))
             return
 
         bundle = build_audit_bundle(prepared_datasets)
-        audit_result = run_bundle_audit(bundle)
+        with st.spinner("Analysing transactions and reference files..."):
+            audit_result = run_bundle_audit(bundle)
     except Exception as exc:
-        st.error(f"Could not process audit bundle: {exc}")
+        st.error(f"Could not process uploaded files: {exc}")
         return
 
-    render_bundle_results(audit_result, schema_results, mapping_summary)
+    render_stepper("review")
+    render_bundle_results(audit_result, schema_results, mapping_summary, profiles=profiles)
 
 
 if __name__ == "__main__":

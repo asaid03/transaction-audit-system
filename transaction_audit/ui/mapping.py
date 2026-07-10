@@ -26,13 +26,18 @@ def render_dataset_mapping(
     auto_plan = build_mapping_plan(raw_dataframe, dataset_type=dataset_type)
     expanded = default_profile is None and not auto_plan.auto_schema.has_required_schema
 
-    with st.expander(f"{definition.display_name} schema mapping", expanded=expanded):
+    if not expanded:
+        st.success(f"{definition.display_name} columns detected automatically.")
+    else:
+        st.warning(f"{definition.display_name} needs column mapping before review can continue.")
+
+    with st.expander(f"Adjust {definition.display_name.lower()} column mapping", expanded=expanded):
         profile_options = {"Auto-detect": None}
         profile_options.update({profile.display_name: profile for profile in available_profiles})
         option_names = list(profile_options)
         default_name = default_profile.display_name if default_profile else "Auto-detect"
         selected_name = st.selectbox(
-            "Import profile",
+            "Saved column mapping",
             options=option_names,
             index=option_names.index(default_name),
             key=f"{dataset_type.value}_{source_name}_profile",
@@ -70,9 +75,9 @@ def render_dataset_mapping(
             + ", ".join(schema_result.missing_required)
         )
     elif selected_profile is None:
-        with st.expander(f"Save {definition.display_name.lower()} import profile"):
+        with st.expander(f"Save {definition.display_name.lower()} column mapping"):
             profile_name = st.text_input(
-                "Profile name",
+                "Mapping name",
                 placeholder=f"Example: {definition.display_name} export",
                 key=f"{dataset_type.value}_{source_name}_profile_name",
             )
@@ -81,14 +86,14 @@ def render_dataset_mapping(
                 placeholder="Optional source/system note",
                 key=f"{dataset_type.value}_{source_name}_profile_description",
             )
-            if st.button("Save profile", key=f"{dataset_type.value}_{source_name}_save_profile"):
+            if st.button("Save mapping", key=f"{dataset_type.value}_{source_name}_save_profile"):
                 profile = save_import_profile(
                     profile_name,
                     schema_result.source_to_canonical,
                     description=profile_description,
                     dataset_type=dataset_type,
                 )
-                st.success(f"Saved profile: {profile.display_name}")
+                st.success(f"Saved mapping: {profile.display_name}")
                 st.rerun()
 
     return schema_result, selected_profile

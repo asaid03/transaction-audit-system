@@ -48,6 +48,13 @@ ML_ANOMALY_DISPLAY_COLUMNS = [
     "counterparty",
     "vendor_id",
 ]
+REVIEW_QUEUE_COLUMNS = [
+    "priority",
+    "finding",
+    "amount",
+    "payee_or_vendor",
+    "transaction_id",
+]
 
 
 def clean_display_frame(dataframe: pd.DataFrame) -> pd.DataFrame:
@@ -56,7 +63,11 @@ def clean_display_frame(dataframe: pd.DataFrame) -> pd.DataFrame:
 
     display = dataframe.copy()
     display = display.fillna("")
-    return display.replace({"None": "", "<NA>": "", "nan": ""})
+    display = display.replace({"None": "", "<NA>": "", "nan": ""})
+    for column in display.columns:
+        if display[column].dtype == "object":
+            display[column] = display[column].map(lambda value: "" if pd.isna(value) else str(value))
+    return display
 
 
 def display_dataset_summary(summary: pd.DataFrame) -> pd.DataFrame:
@@ -102,6 +113,31 @@ def display_transaction_review(transaction_review: pd.DataFrame) -> pd.DataFrame
     return display
 
 
+def display_review_queue(transaction_review: pd.DataFrame) -> pd.DataFrame:
+    reviewable = reviewable_transaction_rows(transaction_review)
+    if reviewable.empty:
+        return pd.DataFrame(columns=REVIEW_QUEUE_COLUMNS)
+
+    display = pd.DataFrame(
+        {
+            "priority": reviewable["review_priority_band"].map(_priority_dot),
+            "finding": reviewable["review_priority_drivers"].map(_short_finding),
+            "amount": pd.to_numeric(reviewable.get("amount"), errors="coerce"),
+            "payee_or_vendor": reviewable.get("counterparty", ""),
+            "transaction_id": reviewable.get("transaction_id", ""),
+            "row_number": reviewable.get("row_number", ""),
+            "review_priority_score": reviewable.get("review_priority_score", ""),
+            "review_priority_band": reviewable.get("review_priority_band", ""),
+            "review_priority_drivers": reviewable.get("review_priority_drivers", ""),
+            "transaction_date": reviewable.get("transaction_date", ""),
+            "account_id": reviewable.get("account_id", ""),
+            "currency": reviewable.get("currency", ""),
+            "invoice_reference": reviewable.get("invoice_reference", ""),
+        }
+    )
+    return clean_display_frame(display)
+
+
 def display_ml_anomalies(anomalies: pd.DataFrame) -> pd.DataFrame:
     if anomalies.empty:
         return anomalies
@@ -129,3 +165,20 @@ def reviewable_transaction_rows(dataframe: pd.DataFrame) -> pd.DataFrame:
 
     scores = pd.to_numeric(dataframe["review_priority_score"], errors="coerce").fillna(0)
     return dataframe[scores.gt(0)].copy()
+
+
+def _priority_dot(value: object) -> str:
+    band = str(value).lower()
+    if band == "high":
+        return "High"
+    if band == "medium":
+        return "Medium"
+    return "Low"
+
+
+def _short_finding(value: object) -> str:
+    text = str(value).strip()
+    if not text or text == "No priority drivers detected.":
+        return ""
+    first_driver = text.split(";")[0].strip()
+    return first_driver[:60]

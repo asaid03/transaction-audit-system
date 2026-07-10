@@ -11,6 +11,7 @@ from transaction_audit.review import (
     unique_values,
 )
 from transaction_audit.ui.display import display_findings, display_transaction_review, reviewable_transaction_rows
+from transaction_audit.ui.display import display_review_queue
 
 
 def render_review_queue(
@@ -18,23 +19,123 @@ def render_review_queue(
     transaction_review: pd.DataFrame,
     key_prefix: str,
 ) -> None:
-    st.subheader("Exceptions needing review")
-    if findings.empty:
-        st.success("No validation or reconciliation findings need review.")
-    else:
-        with st.expander("Filter findings"):
-            filtered_findings = review_findings_with_filters(findings, key_prefix=key_prefix)
-        st.dataframe(display_findings(filtered_findings), use_container_width=True, hide_index=True)
-
-    st.subheader("Transactions by review priority")
+    st.subheader("Priority review")
     reviewable_transactions = reviewable_transaction_rows(transaction_review)
     if reviewable_transactions.empty:
-        st.info("No transaction rows have priority drivers.")
+        if findings.empty:
+            st.success("No findings need review.")
+        else:
+            st.info("Findings were created, but no transaction rows have priority drivers.")
+            with st.expander("View finding-level detail", expanded=True):
+                filtered_findings = review_findings_with_filters(findings, key_prefix=key_prefix)
+                st.dataframe(display_findings(filtered_findings), width="stretch", hide_index=True)
         return
 
-    with st.expander("Filter transactions"):
-        filtered_transactions = transaction_review_with_filters(reviewable_transactions, key_prefix=key_prefix)
-    st.dataframe(display_transaction_review(filtered_transactions), use_container_width=True, hide_index=True)
+    filtered_transactions = priority_review_filters(reviewable_transactions, key_prefix=key_prefix)
+    queue = display_review_queue(filtered_transactions)
+    if queue.empty:
+        st.info("No transactions match the selected filters.")
+        return
+
+    st.dataframe(
+        queue[["priority", "finding", "amount", "payee_or_vendor", "transaction_id"]],
+        width="stretch",
+        hide_index=True,
+        column_config={
+            "priority": st.column_config.TextColumn("Priority", width="small"),
+            "finding": st.column_config.TextColumn("Finding", width="large"),
+            "amount": st.column_config.NumberColumn("Amount", format="%.2f", width="small"),
+            "payee_or_vendor": st.column_config.TextColumn("Payee / vendor", width="medium"),
+            "transaction_id": st.column_config.TextColumn("Transaction ID", width="small"),
+        },
+    )
+
+    render_selected_transaction_detail(queue, key_prefix=key_prefix)
+
+    if not findings.empty:
+        with st.expander("View finding-level detail"):
+            filtered_findings = review_findings_with_filters(findings, key_prefix=key_prefix)
+            st.dataframe(display_findings(filtered_findings), width="stretch", hide_index=True)
+
+    with st.expander("View uploaded transaction data"):
+        st.dataframe(display_transaction_review(filtered_transactions), width="stretch", hide_index=True)
+
+
+def priority_review_filters(transaction_review: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
+    filter_columns = st.columns([1.4, 2])
+    band = filter_columns[0].radio(
+        "Priority",
+        options=["All", "High", "Medium", "Low"],
+        horizontal=True,
+        key=f"{key_prefix}_priority_band_filter",
+    )
+    search = filter_columns[1].text_input(
+        "Search",
+        placeholder="Search by transaction ID or payee/vendor",
+        key=f"{key_prefix}_priority_search",
+    )
+
+    filtered = sort_by_review_priority(transaction_review)
+    if band != "All":
+        filtered = filtered[
+            filtered["review_priority_band"].astype("string").str.lower().eq(band.lower())
+        ].copy()
+
+    search_text = search.strip().lower()
+    if search_text:
+        haystack = (
+            filtered.get("transaction_id", "").astype("string").str.lower()
+            + " "
+            + filtered.get("counterparty", "").astype("string").str.lower()
+        )
+        filtered = filtered[haystack.str.contains(search_text, regex=False, na=False)].copy()
+    return filtered
+
+
+def render_selected_transaction_detail(queue: pd.DataFrame, key_prefix: str) -> None:
+    options = [
+        f"{row.transaction_id} - {row.finding}"
+        for row in queue.itertuples(index=False)
+    ]
+    selected = st.selectbox(
+        "Select a transaction to review",
+        options=options,
+        key=f"{key_prefix}_selected_transaction_detail",
+    )
+    if not selected:
+        return
+
+    selected_index = options.index(selected)
+    row = queue.iloc[selected_index]
+    with st.container(border=True):
+        left, right = st.columns([1, 1])
+        left.markdown("**Transaction detail**")
+        left.write(f"Transaction ID: {row.get('transaction_id', '')}")
+        left.write(f"Date: {row.get('transaction_date', '')}")
+        left.write(f"Account: {row.get('account_id', '')}")
+        left.write(f"Currency: {row.get('currency', '')}")
+        left.write(f"Payee / vendor: {row.get('payee_or_vendor', '')}")
+        left.write(f"Amount: {row.get('amount', '')}")
+        right.markdown("**Why this was flagged**")
+        right.write(row.get("review_priority_drivers", ""))
+
+    status_columns = st.columns([1, 2])
+    status_columns[0].selectbox(
+        "Review status",
+        options=[
+            "Needs review",
+            "Under review",
+            "Cleared - no issue",
+            "Cleared - adjustment needed",
+            "Escalate",
+        ],
+        key=f"{key_prefix}_review_status_{selected_index}",
+    )
+    status_columns[1].text_input(
+        "Review note",
+        placeholder="Add note for this session",
+        key=f"{key_prefix}_review_note_{selected_index}",
+    )
 
 
 def review_findings_with_filters(findings: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
@@ -48,7 +149,7 @@ def review_findings_with_filters(findings: pd.DataFrame, key_prefix: str) -> pd.
         key=f"{key_prefix}_finding_bands",
     )
     issue_types = issue_column.multiselect(
-        "Issue type",
+        "Finding type",
         options=unique_issue_types(findings),
         key=f"{key_prefix}_finding_issue_types",
     )
@@ -75,7 +176,7 @@ def transaction_review_with_filters(transaction_review: pd.DataFrame, key_prefix
         key=f"{key_prefix}_transaction_bands",
     )
     issue_types = first_row[1].multiselect(
-        "Issue type",
+        "Finding type",
         options=unique_issue_types(transaction_review),
         key=f"{key_prefix}_transaction_issue_types",
     )
@@ -92,7 +193,7 @@ def transaction_review_with_filters(transaction_review: pd.DataFrame, key_prefix
         key=f"{key_prefix}_transaction_accounts",
     )
     counterparties = second_row[1].multiselect(
-        "Counterparty",
+        "Payee or vendor",
         options=unique_values(transaction_review, "counterparty"),
         key=f"{key_prefix}_transaction_counterparties",
     )

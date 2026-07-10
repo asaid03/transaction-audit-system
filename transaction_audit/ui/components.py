@@ -7,18 +7,77 @@ from transaction_audit.cleaning import CleaningResult
 from transaction_audit.ui.display import priority_count
 
 
-def render_page_header() -> None:
-    st.title("Transaction Audit")
-    st.caption(
-        "Audit support for transaction files: validate the data, reconcile reference files, "
-        "prioritise exceptions, and export a review pack."
+def render_global_styles() -> None:
+    """Apply small, central Streamlit CSS overrides."""
+    st.html(
+        """
+        <style>
+        :root {
+            --audit-teal: #00897b;
+            --audit-amber: #ffb300;
+            --audit-red: #ef5350;
+            --audit-green: #2e7d32;
+        }
+        .block-container {
+            padding-top: 2rem;
+            padding-bottom: 4rem;
+            max-width: 1180px;
+        }
+        div[data-testid="stMetric"] {
+            background: rgba(255, 255, 255, 0.035);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-top: 3px solid var(--audit-teal);
+            border-radius: 8px;
+            padding: 0.9rem 1rem;
+        }
+        div[data-testid="stMetricLabel"] {
+            color: rgba(255, 255, 255, 0.68);
+        }
+        div[data-testid="stMetricValue"] {
+            font-weight: 700;
+        }
+        div[data-testid="stFileUploader"] section {
+            border-color: rgba(0, 137, 123, 0.45);
+            background: rgba(0, 137, 123, 0.04);
+        }
+        div[data-testid="stFileUploader"] section:hover {
+            border-color: var(--audit-teal);
+            background: rgba(0, 137, 123, 0.08);
+        }
+        </style>
+        """
     )
 
 
+def render_page_header() -> None:
+    st.title("Transaction Audit")
+    st.caption("Audit support for transaction files, reference checks, and exception review.")
+
+
+def render_stepper(active_step: str) -> None:
+    steps = [("upload", "1", "Upload"), ("review", "2", "Review"), ("export", "3", "Export")]
+    labels = []
+    for step_id, number, label in steps:
+        prefix = "[x]" if step_id == active_step else "[ ]"
+        labels.append(f"{prefix} {number}. {label}")
+    st.caption("  >  ".join(labels))
+
+
+def render_summary_banner(title: str, message: str, state: str = "ok") -> None:
+    text = f"{title}. {message}"
+    if state == "ok":
+        st.success(text)
+    elif state == "error":
+        st.error(text)
+    else:
+        st.warning(text)
+
+
 def render_empty_start(title: str, guidance: list[str]) -> None:
-    st.info(title)
-    for item in guidance:
-        st.markdown(f"- {item}")
+    with st.container(border=True):
+        st.subheader(title)
+        for item in guidance:
+            st.markdown(f"- {item}")
 
 
 def render_run_status(title: str, message: str, state: str) -> None:
@@ -34,6 +93,16 @@ def render_metric_row(metrics: list[tuple[str, object]]) -> None:
     columns = st.columns(len(metrics))
     for column, (label, value) in zip(columns, metrics):
         column.metric(label, value)
+
+
+def render_metric_cards(metrics: list[dict[str, object]]) -> None:
+    columns = st.columns(len(metrics))
+    for column, metric in zip(columns, metrics):
+        column.metric(
+            label=str(metric["label"]),
+            value=metric["value"],
+            help=str(metric.get("subtitle", "")) or None,
+        )
 
 
 def render_priority_overview(
@@ -62,30 +131,30 @@ def render_cleaning_notice(cleaning_result: CleaningResult | None) -> None:
         return
 
     if cleaning_result.applied:
-        with st.expander("Data preparation applied"):
-            st.write("Bank-style export cleanup was applied before schema mapping.")
+        with st.expander("Data preparation applied", expanded=False):
+            st.write("The uploaded file was cleaned before review.")
             if cleaning_result.transformations:
                 st.write("Transformations")
                 st.dataframe(
                     pd.DataFrame({"transformation": cleaning_result.transformations}),
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
             if cleaning_result.dropped_rows:
                 st.write("Dropped source rows")
                 st.dataframe(
                     pd.DataFrame({"source_row_number": cleaning_result.dropped_rows}),
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
             if cleaning_result.warnings:
                 st.write("Warnings")
                 st.dataframe(
                     pd.DataFrame({"warning": cleaning_result.warnings}),
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
         return
 
     if cleaning_result.warnings:
-        st.caption("Cleaning not applied: " + "; ".join(cleaning_result.warnings))
+        st.caption("Data preparation note: " + "; ".join(cleaning_result.warnings))
