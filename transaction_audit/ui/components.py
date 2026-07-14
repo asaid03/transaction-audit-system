@@ -23,6 +23,17 @@ def render_global_styles() -> None:
             padding-bottom: 4rem;
             max-width: 1180px;
         }
+        #MainMenu,
+        header,
+        footer,
+        div[data-testid="stToolbar"],
+        div[data-testid="stDecoration"],
+        div[data-testid="stStatusWidget"],
+        a[href*="github.com/streamlit"],
+        a[href*="github.com"] {
+            visibility: hidden;
+            display: none;
+        }
         div[data-testid="stMetric"] {
             background: rgba(255, 255, 255, 0.035);
             border: 1px solid rgba(255, 255, 255, 0.08);
