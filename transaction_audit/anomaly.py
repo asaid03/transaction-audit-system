@@ -7,12 +7,15 @@ import pandas as pd
 from sklearn.ensemble import IsolationForest
 
 from transaction_audit.parsing import parse_amounts
+from transaction_audit.provenance import source_row_numbers
 
 
 ANOMALY_COLUMNS = [
     "ml_anomaly_score",
     "ml_anomaly_band",
     "ml_anomaly_drivers",
+    "ml_model_flag",
+    "ml_model_decision",
 ]
 MIN_TRAINING_ROWS = 50
 
@@ -22,11 +25,7 @@ class AnomalyConfig:
     amount_quantile: float = 0.95
     minimum_amount_threshold: float = 10000.0
     min_training_rows: int = MIN_TRAINING_ROWS
-    amount_signal_points: int = 70
-    repeated_invoice_points: int = 85
-    missing_invoice_points: int = 65
-    isolation_forest_points: int = 25
-    isolation_forest_contamination: float = 0.12
+    isolation_forest_contamination: float = 0.05
     isolation_forest_estimators: int = 200
     random_state: int = 42
 
@@ -60,16 +59,9 @@ def score_transaction_anomalies(
 ) -> pd.DataFrame:
     model = model or fit_anomaly_model(transactions, config=config)
     scored = transactions.copy().reset_index(drop=True)
-    scored.insert(0, "row_number", range(2, len(scored) + 2))
+    scored.insert(0, "row_number", source_row_numbers(scored).to_numpy())
 
-    signals_by_index: dict[int, list[tuple[int, str]]] = {}
-    _add_amount_signals(scored, model, signals_by_index)
-    _add_repeated_invoice_signals(scored, model.config, signals_by_index)
-    _add_missing_invoice_signals(scored, model.config, signals_by_index)
-    _add_isolation_forest_signals(scored, model, signals_by_index)
-
-    score_rows = [_score_signals(signals_by_index.get(index, [])) for index in scored.index]
-    score_frame = pd.DataFrame(score_rows, columns=ANOMALY_COLUMNS)
+    score_frame = _score_with_isolation_forest(scored, model)
     return pd.concat([score_frame, scored], axis=1)
 
 
@@ -78,7 +70,11 @@ def evaluate_anomaly_detection(
     labels: pd.Series,
     threshold: int = 50,
 ) -> dict[str, float | int]:
-    predicted = scored["ml_anomaly_score"].ge(threshold).reset_index(drop=True)
+    predicted = (
+        scored["ml_model_flag"].astype(bool).reset_index(drop=True)
+        if "ml_model_flag" in scored
+        else scored["ml_anomaly_score"].ge(threshold).reset_index(drop=True)
+    )
     actual = labels.astype(str).str.strip().isin({"1", "true", "True"}).reset_index(drop=True)
 
     true_positive = int((predicted & actual).sum())
@@ -156,45 +152,6 @@ def _feature_matrix(transactions: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def _add_amount_signals(
-    transactions: pd.DataFrame,
-    model: AnomalyModel,
-    signals_by_index: dict[int, list[tuple[int, str]]],
-) -> None:
-    if model.amount_threshold is None or "amount" not in transactions:
-        return
-
-    amounts = _amounts(transactions).abs()
-    for index in amounts[amounts.ge(model.amount_threshold)].index:
-        _add_signal(
-            signals_by_index,
-            index,
-            model.config.amount_signal_points,
-            (
-                "Payment is higher than almost all other payments in this file "
-                f"(above {model.amount_threshold:,.2f})"
-            ),
-        )
-
-
-def _add_repeated_invoice_signals(
-    transactions: pd.DataFrame,
-    config: AnomalyConfig,
-    signals_by_index: dict[int, list[tuple[int, str]]],
-) -> None:
-    duplicate_mask = _repeated_invoice_mask(transactions)
-    if not duplicate_mask.any():
-        return
-
-    for index in duplicate_mask[duplicate_mask].index:
-        _add_signal(
-            signals_by_index,
-            index,
-            config.repeated_invoice_points,
-            "Invoice/reference repeats on a later transaction with matching payment details",
-        )
-
-
 def _repeated_invoice_mask(transactions: pd.DataFrame) -> pd.Series:
     if "invoice_reference" not in transactions or "amount" not in transactions:
         return pd.Series(False, index=transactions.index)
@@ -223,45 +180,6 @@ def _repeated_invoice_mask(transactions: pd.DataFrame) -> pd.Series:
     return result
 
 
-def _add_missing_invoice_signals(
-    transactions: pd.DataFrame,
-    config: AnomalyConfig,
-    signals_by_index: dict[int, list[tuple[int, str]]],
-) -> None:
-    if "invoice_reference" not in transactions:
-        return
-
-    missing = transactions["invoice_reference"].astype("string").str.strip().fillna("").eq("")
-    for index in missing[missing].index:
-        _add_signal(
-            signals_by_index,
-            index,
-            config.missing_invoice_points,
-            "Invoice/reference is missing",
-        )
-
-
-def _add_isolation_forest_signals(
-    transactions: pd.DataFrame,
-    model: AnomalyModel,
-    signals_by_index: dict[int, list[tuple[int, str]]],
-) -> None:
-    if model.isolation_forest is None:
-        return
-
-    predictions = model.isolation_forest.predict(_feature_matrix(transactions))
-    for index in transactions.index[predictions == -1]:
-        _add_signal(
-            signals_by_index,
-            index,
-            model.config.isolation_forest_points,
-            (
-                "The combination of amount, date, payee, and other payment details "
-                "looks unusual compared with this file"
-            ),
-        )
-
-
 def _invoice_values(transactions: pd.DataFrame) -> pd.Series | None:
     if "invoice_reference" not in transactions:
         return None
@@ -276,30 +194,117 @@ def _entity_frequency(transactions: pd.DataFrame) -> pd.Series:
     return pd.Series(0.0, index=transactions.index)
 
 
-def _add_signal(
-    signals_by_index: dict[int, list[tuple[int, str]]],
+def _score_with_isolation_forest(
+    transactions: pd.DataFrame,
+    model: AnomalyModel,
+) -> pd.DataFrame:
+    if model.isolation_forest is None:
+        return pd.DataFrame(
+            {
+                "ml_anomaly_score": [0] * len(transactions),
+                "ml_anomaly_band": ["low"] * len(transactions),
+                "ml_anomaly_drivers": ["Model not run: fewer than 50 transactions."] * len(transactions),
+                "ml_model_flag": [False] * len(transactions),
+                "ml_model_decision": [pd.NA] * len(transactions),
+            },
+            columns=ANOMALY_COLUMNS,
+        )
+
+    features = _feature_matrix(transactions)
+    decisions = pd.Series(
+        model.isolation_forest.decision_function(features),
+        index=transactions.index,
+        dtype="float64",
+    )
+    flags = pd.Series(
+        model.isolation_forest.predict(features) == -1,
+        index=transactions.index,
+        dtype="bool",
+    )
+    scores = _normalized_model_scores(decisions, flags)
+    amounts = _amounts(transactions).abs()
+    repeated_invoice = _repeated_invoice_mask(transactions)
+    invoice_values = _invoice_values(transactions)
+    entity_frequency = _entity_frequency(transactions)
+    drivers = [
+        _model_drivers(
+            index,
+            model,
+            amounts=amounts,
+            repeated_invoice=repeated_invoice,
+            invoice_values=invoice_values,
+            entity_frequency=entity_frequency,
+        )
+        if flags.loc[index]
+        else "Not flagged by the anomaly model."
+        for index in transactions.index
+    ]
+    return pd.DataFrame(
+        {
+            "ml_anomaly_score": scores,
+            "ml_anomaly_band": scores.map(_band_for_score),
+            "ml_anomaly_drivers": drivers,
+            "ml_model_flag": flags,
+            "ml_model_decision": decisions.round(6),
+        },
+        columns=ANOMALY_COLUMNS,
+    )
+
+
+def _normalized_model_scores(decisions: pd.Series, flags: pd.Series) -> pd.Series:
+    unusualness = -decisions
+    scores = pd.Series(0, index=decisions.index, dtype="int64")
+
+    inlier_values = unusualness[~flags]
+    if len(inlier_values) > 1:
+        ranks = inlier_values.rank(method="average")
+        scores.loc[inlier_values.index] = ((ranks - 1) / (len(ranks) - 1) * 49).round().astype(int)
+
+    outlier_values = unusualness[flags]
+    if len(outlier_values) == 1:
+        scores.loc[outlier_values.index] = 100
+    elif len(outlier_values) > 1:
+        ranks = outlier_values.rank(method="average")
+        scores.loc[outlier_values.index] = (
+            50 + ((ranks - 1) / (len(ranks) - 1) * 50).round()
+        ).astype(int)
+    return scores
+
+
+def _model_drivers(
     index: int,
-    points: int,
-    driver: str,
-) -> None:
-    signals_by_index.setdefault(index, []).append((points, driver))
+    model: AnomalyModel,
+    *,
+    amounts: pd.Series,
+    repeated_invoice: pd.Series,
+    invoice_values: pd.Series | None,
+    entity_frequency: pd.Series,
+) -> str:
+    drivers = []
+    if (
+        model.amount_threshold is not None
+        and pd.notna(amounts.loc[index])
+        and amounts.loc[index] >= model.amount_threshold
+    ):
+        drivers.append(
+            "Amount is in the highest 5% of this file "
+            f"(at or above {model.amount_threshold:,.2f})"
+        )
 
+    if repeated_invoice.loc[index]:
+        drivers.append("The invoice/reference and amount repeat for the same payee")
 
-def _score_signals(signals: list[tuple[int, str]]) -> dict[str, object]:
-    unique = sorted(set(signals), key=lambda signal: (-signal[0], signal[1]))
-    if not unique:
-        return {
-            "ml_anomaly_score": 0,
-            "ml_anomaly_band": "low",
-            "ml_anomaly_drivers": "No anomaly drivers detected.",
-        }
+    if invoice_values is not None and invoice_values.loc[index] == "":
+        drivers.append("The invoice/reference is missing")
 
-    score = min(sum(points for points, _ in unique), 100)
-    return {
-        "ml_anomaly_score": score,
-        "ml_anomaly_band": _band_for_score(score),
-        "ml_anomaly_drivers": "; ".join(driver for _, driver in unique),
-    }
+    if entity_frequency.loc[index] <= 1:
+        drivers.append("The payee appears only once in this file")
+
+    if not drivers:
+        drivers.append(
+            "The combination of amount, invoice status, and payee frequency differs from most payments"
+        )
+    return "; ".join(drivers)
 
 
 def _band_for_score(score: int) -> str:

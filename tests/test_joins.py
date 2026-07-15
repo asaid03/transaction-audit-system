@@ -28,6 +28,22 @@ class JoinTests(unittest.TestCase):
         self.assertEqual([2, 3], joined[AUDIT_ROW_NUMBER].tolist())
         self.assertEqual(["both", "left_only"], joined["_merge"].astype(str).tolist())
 
+    def test_safe_left_join_uses_source_file_row_numbers_when_available(self):
+        transactions = pd.DataFrame(
+            {"vendor_id": ["VEN-1", "VEN-404"], "source_row_number": [8, 11]}
+        )
+        vendors = pd.DataFrame({"vendor_id": ["VEN-1"]})
+
+        joined = safe_left_join(
+            transactions,
+            vendors,
+            left_on="vendor_id",
+            right_on="vendor_id",
+            right_prefix="vendor",
+        )
+
+        self.assertEqual([8, 11], joined[AUDIT_ROW_NUMBER].tolist())
+
     def test_unmatched_left_rows_returns_missing_references(self):
         transactions = pd.DataFrame({"vendor_id": ["VEN-1", "VEN-404"]})
         vendors = pd.DataFrame({"vendor_id": ["VEN-1"]})

@@ -10,10 +10,11 @@ Python and Streamlit prototype for testing financial transaction files, reconcil
 - Applies conservative cleanup for bank-style transaction exports, including narration-based counterparty extraction.
 - Saves dataset-scoped import profiles for repeat file formats.
 - Runs single-file transaction validation checks.
+- Preserves source-file row numbers through cleaning, findings, priority scoring, and anomaly output.
 - Runs multi-file reconciliation against vendors, beneficiaries, and budgets.
 - Suggests possible vendor matches when exact vendor matching fails but a high-confidence fuzzy name match exists.
 - Adds deterministic review-priority scores, bands, and drivers for exception review.
-- Adds a separate transaction-level ML/anomaly review output, using `scikit-learn` Isolation Forest as one supporting model driver.
+- Adds a separate transaction-level ML/anomaly review output whose score comes from `scikit-learn` Isolation Forest rather than deterministic audit findings.
 - Shows a review-first UI with run status, priority summary, audit workbook export, and filterable review queues.
 - Records skipped checks when optional reference files are missing.
 - Produces reviewer-friendly audit workbooks with findings, risk levels, recommended actions, and raw evidence.
@@ -35,6 +36,8 @@ Checks include:
 - duplicate transaction IDs
 - possible duplicate payments
 - missing invoice/reference values when an invoice/reference column is present
+- running-balance movements that do not reconcile, when a usable balance column exists
+- high payee concentration in sufficiently large, varied populations, assessed separately by currency
 
 Bank-style CSV exports with preamble rows, debit/credit split columns, narration fields, and footer totals can be cleaned before validation. See the realistic fixtures in `sample_data/realistic_bank_export.csv`, `sample_data/realistic_bank_export_29.csv`, `sample_data/realistic_mobile_money_export.csv`, and `sample_data/realistic_ledger_export.csv`.
 
@@ -58,8 +61,10 @@ Checks include:
 - duplicate beneficiary reference keys
 - beneficiaries paid more than their expected amount, when `expected_amount` is provided
 - spend over approved budget lines, when a budget file is uploaded
+- vendor ID/name disagreements and duplicate vendor names
+- entitlement and budget comparisons separated by shared currency, period, programme, project, donor, or location context
 
-Vendor concentration, threshold structuring, and timing anomaly checks are planned later.
+Threshold structuring and timing anomaly checks are planned later.
 
 ## Audit Workbook
 
@@ -118,7 +123,7 @@ Run the Streamlit app:
 Run tests:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -v
+.\.venv\Scripts\python.exe -B -m pytest -q
 ```
 
 Run the Phase 2 sample CLI:

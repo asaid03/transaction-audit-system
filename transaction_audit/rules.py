@@ -5,6 +5,7 @@ from typing import Any, Hashable
 import pandas as pd
 
 from transaction_audit.config import REQUIRED_COLUMNS, ValidationConfig
+from transaction_audit.provenance import source_row_number_at_position, source_row_numbers
 from transaction_audit.types import ValidationIssue
 
 
@@ -274,7 +275,8 @@ def check_possible_duplicate_payments(
         reasons = sorted(match_reasons.get(index, set()))
         related_ids = ", ".join(peer_ids)
         reason_text = " and ".join(reasons)
-        position = checked.index.get_loc(index) + 2
+        position_index = checked.index.get_loc(index)
+        position = source_row_number_at_position(checked, int(position_index))
         issues.append(
             make_issue(
                 row_number=int(position),
@@ -292,11 +294,7 @@ def check_possible_duplicate_payments(
 
 def rows_matching(dataframe: pd.DataFrame, mask: pd.Series):
     matched_mask = mask.fillna(False).astype(bool).to_numpy()
-    positions = [
-        offset + 2
-        for offset, is_match in enumerate(matched_mask)
-        if is_match
-    ]
+    positions = source_row_numbers(dataframe).loc[matched_mask].tolist()
     records = dataframe.loc[matched_mask].to_dict("records")
 
     for position, row in zip(positions, records):

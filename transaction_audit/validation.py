@@ -7,6 +7,10 @@ from typing import TYPE_CHECKING
 from transaction_audit.config import ValidationConfig
 from transaction_audit.ingestion import load_transactions
 from transaction_audit.parsing import prepare_transactions
+from transaction_audit.population import (
+    check_running_balance_integrity,
+    check_vendor_concentration,
+)
 from transaction_audit.rules import (
     check_amounts,
     check_currencies,
@@ -44,6 +48,8 @@ def validate_transactions(
     issues.extend(check_missing_invoice_references(prepared.original, prepared.checked))
     issues.extend(check_duplicate_transaction_ids(prepared.checked))
     issues.extend(check_possible_duplicate_payments(prepared.checked, config))
+    issues.extend(check_running_balance_integrity(prepared.checked, config))
+    issues.extend(check_vendor_concentration(prepared.checked, config))
 
     return ValidationResult(transactions=prepared.checked, issues=sort_issues(issues))
 

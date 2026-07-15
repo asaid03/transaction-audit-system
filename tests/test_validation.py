@@ -156,6 +156,23 @@ class ValidationTests(unittest.TestCase):
 
         self.assertEqual([2, 3], row_numbers)
 
+    def test_uses_preserved_source_row_number_when_available(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001"],
+                "transaction_date": ["not-a-date"],
+                "account_id": ["ACC-1"],
+                "amount": ["10"],
+                "currency": ["GBP"],
+                "counterparty": ["Vendor A"],
+                "source_row_number": [12],
+            }
+        )
+
+        issues = validate_transactions(dataframe).issues_dataframe()
+
+        self.assertEqual([12], issues["row_number"].tolist())
+
     def test_flags_possible_duplicate_payments_with_different_ids(self):
         dataframe = pd.DataFrame(
             {
@@ -361,3 +378,38 @@ class ValidationTests(unittest.TestCase):
 
         self.assertNotIn("population_large_amount", issue_types)
         self.assertIn("large_amount", issue_types)
+
+    def test_runs_running_balance_integrity_when_balance_is_available(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": [f"TXN-{index:03d}" for index in range(1, 8)],
+                "transaction_date": ["2026-05-01"] * 7,
+                "account_id": ["ACC-1"] * 7,
+                "amount": ["100", "50", "25", "40", "10", "20", "30"],
+                "currency": ["USD"] * 7,
+                "counterparty": [f"Vendor {index}" for index in range(1, 8)],
+                "balance": ["900", "850", "825", "700", "690", "670", "640"],
+            }
+        )
+
+        issues = validate_transactions(dataframe).issues_dataframe()
+
+        balance_issues = issues[issues["issue_type"].eq("balance_movement_mismatch")]
+        self.assertEqual([5], balance_issues["row_number"].tolist())
+
+    def test_runs_vendor_concentration_by_currency(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": [f"TXN-{index:03d}" for index in range(1, 21)],
+                "transaction_date": pd.date_range("2026-05-01", periods=20, freq="D").astype(str),
+                "account_id": ["ACC-1"] * 20,
+                "amount": ["100"] * 10 + ["40"] * 10,
+                "currency": ["USD"] * 20,
+                "counterparty": ["Vendor A"] * 10 + ["Vendor B"] * 5 + ["Vendor C"] * 5,
+            }
+        )
+
+        issues = validate_transactions(dataframe).issues_dataframe()
+
+        concentration = issues[issues["issue_type"].eq("vendor_concentration")]
+        self.assertEqual(["Vendor A"], concentration["related_record_id"].tolist())

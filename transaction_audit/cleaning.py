@@ -7,10 +7,10 @@ import pandas as pd
 
 from transaction_audit.narration import extract_counterparties_from_narration
 from transaction_audit.parsing import parse_amounts
+from transaction_audit.provenance import SOURCE_ROW_NUMBER
 from transaction_audit.schema import normalize_column_key
 
 
-SOURCE_ROW_NUMBER = "source_row_number"
 MINIMUM_HEADER_SCORE = 8
 
 TRANSACTION_ID_KEYS = {

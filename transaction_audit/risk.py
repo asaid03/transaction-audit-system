@@ -6,6 +6,7 @@ import pandas as pd
 
 from transaction_audit.config import ValidationConfig
 from transaction_audit.parsing import parse_amounts
+from transaction_audit.provenance import source_row_numbers
 from transaction_audit.types import ISSUE_COLUMNS
 
 
@@ -35,6 +36,7 @@ ISSUE_SIGNALS = {
     "invalid_date": RiskSignal(80, "high", "Invalid transaction date"),
     "invalid_transaction_date": RiskSignal(80, "high", "Invalid transaction date"),
     "unknown_vendor_reference": RiskSignal(80, "high", "Payee was not found in the approved vendor list"),
+    "balance_movement_mismatch": RiskSignal(80, "high", "Running balance does not reconcile to the transaction amount"),
     "unknown_beneficiary_reference": RiskSignal(80, "high", "Beneficiary was not found in the register"),
     "missing_value": RiskSignal(75, "high", "Required transaction field is missing"),
     "missing_required_value": RiskSignal(75, "high", "Required transaction field is missing"),
@@ -45,6 +47,8 @@ ISSUE_SIGNALS = {
     "possible_duplicate_payment": RiskSignal(70, "high", "Possible duplicate payment"),
     "large_amount": RiskSignal(65, "medium", "Payment is above the review limit"),
     "unsupported_currency": RiskSignal(60, "medium", "Currency is not in the expected list"),
+    "vendor_reference_mismatch": RiskSignal(60, "medium", "Vendor ID and payee name point to different records"),
+    "vendor_concentration": RiskSignal(55, "medium", "One payee represents a high share of reviewed transaction value"),
     "missing_invoice_reference": RiskSignal(55, "medium", "Invoice/reference field is missing"),
     "possible_vendor_match": RiskSignal(45, "medium", "Payee name may match an approved vendor, but needs confirmation"),
     "zero_amount": RiskSignal(35, "low", "Zero amount transaction"),
@@ -79,7 +83,7 @@ def score_transactions(
 ) -> pd.DataFrame:
     config = config or ValidationConfig()
     review = transactions.copy().reset_index(drop=True)
-    review.insert(0, "row_number", range(2, len(review) + 2))
+    review.insert(0, "row_number", source_row_numbers(review).to_numpy())
 
     issue_signals = _signals_by_transaction_row(issues)
     issue_types = _issue_types_by_transaction_row(issues)

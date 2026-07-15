@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from transaction_audit.provenance import source_row_numbers
+
 
 AUDIT_ROW_NUMBER = "_audit_row_number"
 LEFT_JOIN_KEY = "_left_join_key"
@@ -18,7 +20,7 @@ def normalize_join_key(series: pd.Series) -> pd.Series:
 
 def with_audit_row_numbers(dataframe: pd.DataFrame, start: int = 2) -> pd.DataFrame:
     numbered = dataframe.copy()
-    numbered[AUDIT_ROW_NUMBER] = range(start, start + len(numbered))
+    numbered[AUDIT_ROW_NUMBER] = source_row_numbers(numbered, start=start)
     return numbered
 
 

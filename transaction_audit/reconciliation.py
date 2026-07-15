@@ -29,6 +29,14 @@ VENDOR_NAME_STOPWORDS = {
     "supplier",
     "suppliers",
 }
+RECONCILIATION_CONTEXT_FIELDS = (
+    "currency",
+    "period",
+    "programme_id",
+    "project_id",
+    "donor",
+    "location",
+)
 
 
 @dataclass(frozen=True)
@@ -113,12 +121,9 @@ def check_transaction_vendor_references(
     transactions: AuditDataset,
     vendors: AuditDataset,
 ) -> ReconciliationResult:
-    match = _first_available_match(
-        transactions.dataframe,
-        vendors.dataframe,
-        preferred_pairs=(("vendor_id", "vendor_id"), ("counterparty", "vendor_name")),
-    )
-    if match is None:
+    has_id_match = "vendor_id" in transactions.dataframe and "vendor_id" in vendors.dataframe
+    has_name_match = "counterparty" in transactions.dataframe and "vendor_name" in vendors.dataframe
+    if not has_id_match and not has_name_match:
         return ReconciliationResult(
             issues=[],
             skipped_checks=[
@@ -130,27 +135,137 @@ def check_transaction_vendor_references(
             ],
         )
 
-    transaction_field, vendor_field = match
-    duplicate_issues = duplicate_reference_key_issues(
-        vendors,
-        key_field=vendor_field,
-        issue_type="duplicate_vendor_reference",
-        message_template="Vendor reference '{value}' appears more than once in the vendor file.",
-    )
-    vendors_for_join = deduplicate_reference_rows(vendors.dataframe, vendor_field)
-    joined = safe_left_join(
-        transactions.dataframe,
-        vendors_for_join,
-        left_on=transaction_field,
-        right_on=vendor_field,
-        right_prefix="vendor",
-    )
-    issues = vendor_reference_issues_for_unmatched_rows(
-        unmatched_left_rows(joined).to_dict("records"),
-        transaction_field=transaction_field,
-        vendors=vendors_for_join,
-    )
+    duplicate_issues = []
+    for vendor_field in ("vendor_id", "vendor_name"):
+        if vendor_field not in vendors.dataframe:
+            continue
+        duplicate_issues.extend(
+            duplicate_reference_key_issues(
+                vendors,
+                key_field=vendor_field,
+                issue_type="duplicate_vendor_reference",
+                message_template=(
+                    f"Vendor {vendor_field.replace('_', ' ')} '{{value}}' appears more than "
+                    "once in the vendor file."
+                ),
+            )
+        )
+    vendor_id_keys = _reference_key_set(vendors.dataframe, "vendor_id") if has_id_match else set()
+    vendor_names = _reference_record_lookup(vendors.dataframe, "vendor_name") if has_name_match else {}
+    fuzzy_candidates = fuzzy_vendor_candidates(vendors.dataframe) if has_name_match else []
+
+    issues = []
+    for row in with_audit_row_numbers(transactions.dataframe).to_dict("records"):
+        issue = _vendor_reference_issue_for_row(
+            row,
+            vendor_id_keys=vendor_id_keys,
+            vendor_names=vendor_names,
+            fuzzy_candidates=fuzzy_candidates,
+        )
+        if issue is not None:
+            issues.append(issue)
     return ReconciliationResult(issues=duplicate_issues + issues, skipped_checks=[])
+
+
+def _vendor_reference_issue_for_row(
+    row: dict[str, object],
+    *,
+    vendor_id_keys: set[str],
+    vendor_names: dict[str, dict[str, object]],
+    fuzzy_candidates: list[dict[str, object]],
+) -> ValidationIssue | None:
+    vendor_id = _clean_optional(row.get("vendor_id"))
+    counterparty = _clean_optional(row.get("counterparty"))
+    beneficiary_id = _clean_optional(row.get("beneficiary_id"))
+
+    if vendor_id is None and beneficiary_id is not None:
+        return None
+
+    if vendor_id is not None and _normalized_lookup_key(vendor_id) in vendor_id_keys:
+        return None
+
+    exact_name_match = (
+        vendor_names.get(_normalized_lookup_key(counterparty))
+        if counterparty is not None
+        else None
+    )
+    if exact_name_match is not None:
+        if vendor_id is None:
+            return None
+        matched_reference = exact_name_match.get("vendor_id") or exact_name_match.get("vendor_name")
+        return ValidationIssue(
+            dataset="transactions",
+            row_number=int(row[AUDIT_ROW_NUMBER]),
+            transaction_id=_clean_optional(row.get("transaction_id")),
+            field="vendor_id",
+            issue_type="vendor_reference_mismatch",
+            severity="warning",
+            related_dataset="vendors",
+            related_record_id=_clean_optional(matched_reference),
+            message=(
+                f"Vendor ID '{vendor_id}' was not found, but payee '{counterparty}' "
+                f"matches approved vendor '{matched_reference}'."
+            ),
+        )
+
+    if counterparty is not None:
+        possible_match = fuzzy_vendor_match(counterparty, fuzzy_candidates)
+        if possible_match is not None:
+            return _possible_vendor_match_issue(
+                row=row,
+                field="counterparty",
+                query_value=counterparty,
+                candidate=possible_match,
+            )
+
+    reference_value = vendor_id or counterparty
+    if reference_value is None:
+        return None
+    reference_field = "vendor_id" if vendor_id is not None else "counterparty"
+    return _reference_issue(
+        row=row,
+        field=reference_field,
+        issue_type="unknown_vendor_reference",
+        related_dataset="vendors",
+        related_record_id=reference_value,
+        message=f"Vendor reference '{reference_value}' was not found in the vendor file.",
+    )
+
+
+def _reference_record_lookup(
+    dataframe: pd.DataFrame,
+    key_field: str,
+) -> dict[str, dict[str, object]]:
+    if key_field not in dataframe:
+        return {}
+
+    records_by_key: dict[str, list[dict[str, object]]] = {}
+    for record in dataframe.to_dict("records"):
+        key = _normalized_lookup_key(record.get(key_field))
+        if key:
+            records_by_key.setdefault(key, []).append(record)
+    return {
+        key: matching_records[0]
+        for key, matching_records in records_by_key.items()
+        if len(matching_records) == 1
+    }
+
+
+def _reference_key_set(dataframe: pd.DataFrame, key_field: str) -> set[str]:
+    if key_field not in dataframe:
+        return set()
+    return {
+        key
+        for key in (_normalized_lookup_key(value) for value in dataframe[key_field])
+        if key
+    }
+
+
+def _normalized_lookup_key(value: object) -> str:
+    cleaned = _clean_optional(value)
+    if cleaned is None:
+        return ""
+    return " ".join(cleaned.lower().split())
 
 
 def check_transaction_beneficiary_references(
@@ -169,9 +284,11 @@ def check_transaction_beneficiary_references(
             ],
         )
 
+    context_fields = _shared_context_fields(transactions.dataframe, beneficiaries.dataframe)
     duplicate_issues = duplicate_reference_key_issues(
         beneficiaries,
         key_field="beneficiary_id",
+        context_fields=context_fields,
         issue_type="duplicate_beneficiary_reference",
         message_template="Beneficiary reference '{value}' appears more than once in the beneficiary file.",
     )
@@ -217,6 +334,7 @@ def check_beneficiary_entitlements(
             ],
         )
 
+    context_fields = _shared_context_fields(transactions.dataframe, beneficiaries.dataframe)
     transaction_amounts = parse_amounts(transactions.dataframe["amount"])
     valid_transactions = transactions.dataframe[
         transactions.dataframe["beneficiary_id"].astype(str).str.strip().ne("")
@@ -231,8 +349,10 @@ def check_beneficiary_entitlements(
     if valid_transactions.empty:
         return ReconciliationResult(issues=[], skipped_checks=[])
 
+    context_key_columns = _add_context_keys(valid_transactions, context_fields)
+    group_columns = ["_beneficiary_join_key", *context_key_columns]
     actual_by_beneficiary = (
-        valid_transactions.groupby("_beneficiary_join_key", dropna=False)
+        valid_transactions.groupby(group_columns, dropna=False)
         .agg(
             actual_amount=("_amount_numeric", "sum"),
             beneficiary_id=("beneficiary_id", "first"),
@@ -240,8 +360,14 @@ def check_beneficiary_entitlements(
         .reset_index()
     )
 
-    beneficiaries_for_entitlement = deduplicate_reference_rows(beneficiaries.dataframe, "beneficiary_id")
-    expected = beneficiaries_for_entitlement[["beneficiary_id", "expected_amount"]].copy()
+    beneficiaries_for_entitlement = deduplicate_reference_rows(
+        beneficiaries.dataframe,
+        "beneficiary_id",
+        context_fields=context_fields,
+    )
+    expected = beneficiaries_for_entitlement[
+        ["beneficiary_id", "expected_amount", *context_fields]
+    ].copy()
     expected["_expected_amount_numeric"] = parse_amounts(expected["expected_amount"])
     expected["_beneficiary_join_key"] = normalize_join_key(expected["beneficiary_id"])
     expected = expected[
@@ -252,10 +378,12 @@ def check_beneficiary_entitlements(
     if expected.empty:
         return ReconciliationResult(issues=[], skipped_checks=[])
 
+    _add_context_keys(expected, context_fields)
+
     joined = actual_by_beneficiary.merge(
         expected,
         how="inner",
-        on="_beneficiary_join_key",
+        on=group_columns,
         suffixes=("_transaction", "_beneficiary"),
         validate="many_to_one",
     )
@@ -274,7 +402,8 @@ def check_beneficiary_entitlements(
             message=(
                 f"Beneficiary '{row['beneficiary_id_transaction']}' received "
                 f"{row['actual_amount']:,.2f}, above expected amount "
-                f"{row['_expected_amount_numeric']:,.2f}."
+                f"{row['_expected_amount_numeric']:,.2f}"
+                f"{_context_message(row, context_fields)}."
             ),
         )
         for row in overpaid.to_dict("records")
@@ -306,6 +435,7 @@ def check_budget_reconciliation(
         )
 
     transaction_field, budget_field = match
+    context_fields = _shared_context_fields(transactions.dataframe, budget.dataframe)
     transaction_amounts = parse_amounts(transactions.dataframe["amount"])
     transactions_with_rows = with_audit_row_numbers(transactions.dataframe)
     valid_transactions = transactions_with_rows[
@@ -317,11 +447,16 @@ def check_budget_reconciliation(
     duplicate_issues = duplicate_reference_key_issues(
         budget,
         key_field=budget_field,
+        context_fields=context_fields,
         issue_type="duplicate_budget_reference",
         message_template="Budget reference '{value}' appears more than once in the budget file.",
     )
-    budget_for_join = deduplicate_reference_rows(budget.dataframe, budget_field)
-    budget_work = budget_for_join[[budget_field, "approved_amount"]].copy()
+    budget_for_join = deduplicate_reference_rows(
+        budget.dataframe,
+        budget_field,
+        context_fields=context_fields,
+    )
+    budget_work = budget_for_join[[budget_field, "approved_amount", *context_fields]].copy()
     budget_work["_approved_amount_numeric"] = parse_amounts(budget_work["approved_amount"])
     valid_budget = budget_work[
         budget_work[budget_field].astype(str).str.strip().ne("")
@@ -335,8 +470,15 @@ def check_budget_reconciliation(
         valid_budget["_budget_join_key"] = normalize_join_key(valid_budget[budget_field])
         valid_budget = valid_budget[valid_budget["_budget_join_key"].notna()].copy()
 
-        valid_budget_keys = set(valid_budget["_budget_join_key"].dropna())
-        unknown_transactions = valid_transactions[~valid_transactions["_budget_join_key"].isin(valid_budget_keys)]
+        context_key_columns = _add_context_keys(valid_transactions, context_fields)
+        _add_context_keys(valid_budget, context_fields)
+        group_columns = ["_budget_join_key", *context_key_columns]
+
+        valid_budget_keys = set(_composite_keys(valid_budget, group_columns))
+        transaction_keys = _composite_keys(valid_transactions, group_columns)
+        unknown_transactions = valid_transactions[
+            ~transaction_keys.isin(valid_budget_keys)
+        ]
         issues.extend(
             _reference_issue(
                 row=row,
@@ -350,7 +492,7 @@ def check_budget_reconciliation(
         )
 
         spend_by_line = (
-            valid_transactions.groupby("_budget_join_key", dropna=False)
+            valid_transactions.groupby(group_columns, dropna=False)
             .agg(
                 actual_amount=("_amount_numeric", "sum"),
                 budget_reference=(transaction_field, "first"),
@@ -360,7 +502,7 @@ def check_budget_reconciliation(
         joined = spend_by_line.merge(
             valid_budget,
             how="left",
-            on="_budget_join_key",
+            on=group_columns,
             validate="many_to_one",
         )
 
@@ -381,7 +523,8 @@ def check_budget_reconciliation(
                 message=(
                     f"Budget line '{row['budget_reference']}' actual spend "
                     f"{row['actual_amount']:,.2f} exceeds approved amount "
-                    f"{row['_approved_amount_numeric']:,.2f}."
+                    f"{row['_approved_amount_numeric']:,.2f}"
+                    f"{_context_message(row, context_fields)}."
                 ),
             )
             for row in over_budget.to_dict("records")
@@ -395,10 +538,16 @@ def duplicate_reference_key_issues(
     key_field: str,
     issue_type: str,
     message_template: str,
+    context_fields: tuple[str, ...] = (),
 ) -> list[ValidationIssue]:
     keyed = with_audit_row_numbers(dataset.dataframe)
     normalized_key = normalize_join_key(keyed[key_field])
-    duplicate_mask = normalized_key.notna() & normalized_key.duplicated(keep=False)
+    keyed["_reference_join_key"] = normalized_key
+    context_key_columns = _add_context_keys(keyed, context_fields)
+    duplicate_mask = normalized_key.notna() & keyed.duplicated(
+        subset=["_reference_join_key", *context_key_columns],
+        keep=False,
+    )
 
     return [
         ValidationIssue(
@@ -416,52 +565,21 @@ def duplicate_reference_key_issues(
     ]
 
 
-def deduplicate_reference_rows(dataframe: pd.DataFrame, key_field: str) -> pd.DataFrame:
-    normalized_key = normalize_join_key(dataframe[key_field])
+def deduplicate_reference_rows(
+    dataframe: pd.DataFrame,
+    key_field: str,
+    context_fields: tuple[str, ...] = (),
+) -> pd.DataFrame:
+    working = dataframe.copy()
+    normalized_key = normalize_join_key(working[key_field])
+    working["_reference_join_key"] = normalized_key
+    context_key_columns = _add_context_keys(working, context_fields)
     usable_mask = normalized_key.notna()
-    keep_mask = usable_mask & ~normalized_key.duplicated(keep="first")
-    return dataframe.loc[keep_mask].copy()
-
-
-def vendor_reference_issues_for_unmatched_rows(
-    unmatched_rows: list[dict[str, object]],
-    transaction_field: str,
-    vendors: pd.DataFrame,
-) -> list[ValidationIssue]:
-    issues: list[ValidationIssue] = []
-    candidates = fuzzy_vendor_candidates(vendors)
-
-    for row in unmatched_rows:
-        if not _has_value(row[transaction_field]):
-            continue
-
-        query_field = "counterparty" if _has_value(row.get("counterparty")) else transaction_field
-        query_value = row[query_field]
-        possible_match = fuzzy_vendor_match(query_value, candidates)
-
-        if possible_match is not None:
-            issues.append(
-                _possible_vendor_match_issue(
-                    row=row,
-                    field=query_field,
-                    query_value=query_value,
-                    candidate=possible_match,
-                )
-            )
-            continue
-
-        issues.append(
-            _reference_issue(
-                row=row,
-                field=transaction_field,
-                issue_type="unknown_vendor_reference",
-                related_dataset="vendors",
-                related_record_id=row[transaction_field],
-                message=f"Vendor reference '{row[transaction_field]}' was not found in the vendor file.",
-            )
-        )
-
-    return issues
+    keep_mask = usable_mask & ~working.duplicated(
+        subset=["_reference_join_key", *context_key_columns],
+        keep="first",
+    )
+    return working.loc[keep_mask, dataframe.columns].copy()
 
 
 def fuzzy_vendor_candidates(vendors: pd.DataFrame) -> list[dict[str, object]]:
@@ -576,6 +694,43 @@ def _first_available_match(
         if left_column in left.columns and right_column in right.columns:
             return left_column, right_column
     return None
+
+
+def _shared_context_fields(left: pd.DataFrame, right: pd.DataFrame) -> tuple[str, ...]:
+    return tuple(
+        field
+        for field in RECONCILIATION_CONTEXT_FIELDS
+        if field in left.columns and field in right.columns
+    )
+
+
+def _add_context_keys(
+    dataframe: pd.DataFrame,
+    context_fields: tuple[str, ...],
+) -> list[str]:
+    key_columns = []
+    for field in context_fields:
+        key_column = f"_context_{field}"
+        dataframe[key_column] = normalize_join_key(dataframe[field]).fillna("")
+        key_columns.append(key_column)
+    return key_columns
+
+
+def _composite_keys(dataframe: pd.DataFrame, columns: list[str]) -> pd.Series:
+    return dataframe[columns].astype("string").agg(tuple, axis=1)
+
+
+def _context_message(row: dict[str, object], context_fields: tuple[str, ...]) -> str:
+    values = []
+    for field in context_fields:
+        value = _clean_optional(row.get(field))
+        if value is None:
+            value = _clean_optional(row.get(f"{field}_transaction"))
+        if value is None:
+            value = _clean_optional(row.get(f"_context_{field}"))
+        if value is not None:
+            values.append(f"{field.replace('_', ' ')} {value}")
+    return f" for {', '.join(values)}" if values else ""
 
 
 def _has_value(value: object) -> bool:

@@ -84,6 +84,24 @@ class RiskTests(unittest.TestCase):
         self.assertEqual([0, 0], review["review_priority_score"].tolist())
         self.assertEqual(["low", "low"], review["review_priority_band"].tolist())
 
+    def test_transaction_review_preserves_source_file_row_numbers(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001"],
+                "transaction_date": ["2026-05-01"],
+                "account_id": ["OPS"],
+                "amount": ["100"],
+                "currency": ["USD"],
+                "counterparty": ["Vendor A"],
+                "source_row_number": [17],
+            }
+        )
+        result = validate_transactions(dataframe)
+
+        review = score_transactions(result.transactions, result.issues_dataframe())
+
+        self.assertEqual([17], review["row_number"].tolist())
+
     def test_rare_counterparty_signal_requires_enough_rows(self):
         small_file = pd.DataFrame(
             {

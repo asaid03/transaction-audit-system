@@ -93,6 +93,28 @@ DEFAULT_COLUMN_ALIASES = {
     "category": "budget_category",
     "spend_category": "budget_category",
     "spend category": "budget_category",
+    "balance": "balance",
+    "running balance": "balance",
+    "period": "period",
+    "reporting period": "period",
+    "payment period": "period",
+    "programme_id": "programme_id",
+    "programme id": "programme_id",
+    "programme_code": "programme_id",
+    "programme code": "programme_id",
+    "program_id": "programme_id",
+    "program id": "programme_id",
+    "program_code": "programme_id",
+    "program code": "programme_id",
+    "project_id": "project_id",
+    "project id": "project_id",
+    "project_code": "project_id",
+    "project code": "project_id",
+    "donor": "donor",
+    "donor_name": "donor",
+    "donor name": "donor",
+    "location": "location",
+    "site": "location",
 }
 
 VENDOR_COLUMN_ALIASES = {
@@ -131,6 +153,28 @@ BENEFICIARY_COLUMN_ALIASES = {
     "beneficiary": "beneficiary_name",
     "recipient": "beneficiary_name",
     "name": "beneficiary_name",
+    "expected_amount": "expected_amount",
+    "expected amount": "expected_amount",
+    "entitlement_amount": "expected_amount",
+    "entitlement amount": "expected_amount",
+    "approved_amount": "expected_amount",
+    "approved amount": "expected_amount",
+    "currency": "currency",
+    "ccy": "currency",
+    "period": "period",
+    "reporting period": "period",
+    "payment period": "period",
+    "programme_id": "programme_id",
+    "programme id": "programme_id",
+    "programme_code": "programme_id",
+    "programme code": "programme_id",
+    "project_id": "project_id",
+    "project id": "project_id",
+    "project_code": "project_id",
+    "project code": "project_id",
+    "donor": "donor",
+    "location": "location",
+    "site": "location",
 }
 
 BUDGET_COLUMN_ALIASES = {
@@ -153,6 +197,22 @@ BUDGET_COLUMN_ALIASES = {
     "amount": "approved_amount",
     "currency": "currency",
     "ccy": "currency",
+    "period": "period",
+    "reporting period": "period",
+    "budget period": "period",
+    "programme_id": "programme_id",
+    "programme id": "programme_id",
+    "programme_code": "programme_id",
+    "programme code": "programme_id",
+    "project_id": "project_id",
+    "project id": "project_id",
+    "project_code": "project_id",
+    "project code": "project_id",
+    "donor": "donor",
+    "donor_name": "donor",
+    "donor name": "donor",
+    "location": "location",
+    "site": "location",
 }
 
 @dataclass(frozen=True)
@@ -161,3 +221,9 @@ class ValidationConfig:
     allowed_currencies: tuple[str, ...] = ("GBP", "USD", "EUR")
     date_dayfirst: bool = True
     duplicate_payment_window_days: int = 2
+    balance_tolerance: float = 0.01
+    balance_inference_min_transitions: int = 5
+    balance_inference_min_match_ratio: float = 0.80
+    vendor_concentration_threshold: float = 0.40
+    vendor_concentration_min_rows: int = 20
+    vendor_concentration_min_counterparties: int = 3

@@ -24,7 +24,7 @@ Use `README.md` for the current product scope and `AUDIT_RULES.md` for the curre
 ## Simplicity First
 
 - Do not add speculative abstractions.
-- Do not introduce a rule registry, ML model, database, or React frontend unless explicitly planned.
+- Do not introduce a rule registry, another ML model, a database, or a React frontend unless explicitly planned.
 - Keep deterministic, explainable rules ahead of AI/ML scoring.
 - Keep near-term ML transaction-focused unless the user explicitly reopens employee or chart-of-account support.
 - Keep ML/anomaly output explainable and separate from deterministic validation, reconciliation, and review-priority scoring. `scikit-learn` Isolation Forest is currently a supporting signal, not the source of fraud conclusions.
@@ -58,7 +58,7 @@ For non-trivial changes:
 2. Run the full suite:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -v
+.\.venv\Scripts\python.exe -B -m pytest -q
 ```
 
 3. For app-level changes, verify import:

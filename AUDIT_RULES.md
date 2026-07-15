@@ -1,6 +1,6 @@
 # Audit Rules and Risk Levels
 
-Last updated: 2026-05-26
+Last updated: 2026-07-15
 
 This file lists the checks currently implemented by the audit engine. It is meant to make the review scope clear for developers, testers, and non-technical reviewers.
 
@@ -29,16 +29,18 @@ The workbook combines technical severities with issue-specific scoring rules in 
 
 ## ML / Anomaly Review
 
-The `ml_anomalies` output is an explainable anomaly layer for review support. It uses a deterministic `scikit-learn` Isolation Forest as a supporting model signal alongside explicit transaction features. It is not a fraud probability and should not be treated as an audit conclusion.
+The `ml_anomalies` output is a separate anomaly-screening layer for review support. Its score is derived from a deterministic `scikit-learn` Isolation Forest; validation findings do not add points to the model score. It is not a fraud probability and should not be treated as an audit conclusion.
+
+The model runs only with at least 50 transactions. It is configured to flag roughly the most unusual 5% of the uploaded population. A score of 50 or above means Isolation Forest classified the row as an outlier; scores below 50 are relative ranks among model inliers.
 
 Current transaction-level drivers:
 
-| Driver | Meaning |
+| Model feature / explanation | Meaning |
 | --- | --- |
-| Trained high-amount threshold | Amount is high compared with the uploaded transaction population. |
-| Repeated invoice/reference | A later transaction repeats an invoice/reference with matching payment details. |
+| Amount and amount rank | Amount is unusual compared with the uploaded transaction population. |
+| Repeated invoice/reference | Invoice/reference and amount repeat for the same payee. |
 | Missing invoice/reference | The transaction has no invoice/reference value where that field exists. |
-| Isolation Forest support | The fitted model marked the transaction unusual across combined amount, invoice, and entity-frequency features. |
+| Payee frequency | The payee appears unusually often or rarely in the uploaded population. |
 
 The labelled benchmark fixture is `sample_data/reduced_transactions_200_with_anomalies.csv`.
 
@@ -58,6 +60,8 @@ These checks run against the transactions file.
 | Missing invoice/reference | `missing_invoice_reference` | warning | Optional invoice/reference column exists but is blank for the transaction. | Request the invoice, voucher, or payment reference and document the review outcome. |
 | Duplicate transaction ID | `duplicate_transaction_id` | error | Same transaction ID appears more than once. | Check whether rows are duplicates, corrections, or separate payments with wrong IDs. |
 | Possible duplicate payment | `possible_duplicate_payment` | warning | The same invoice reference, or the same account/payee/amount/currency within the review window, appears under different transaction IDs. The finding names the related transaction IDs and the reason for the match. | Compare the named payments and confirm both should exist. |
+| Running balance integrity | `balance_movement_mismatch` | warning | A reported balance movement does not agree with the transaction amount after the statement sign convention is inferred from at least five reliable transitions. Ambiguous statements are not guessed. | Compare the row and preceding row with the source statement and check for omitted, duplicated, or incorrectly signed entries. |
+| Payee concentration | `vendor_concentration` | warning | One payee represents at least the configured share of transaction value in a sufficiently large, varied currency population. Defaults: 40% share, at least 20 transactions, and at least 3 payees. Currencies are assessed separately. | Review procurement evidence, competitive sourcing, approvals, and the reason for the concentration. |
 
 ## Multi-File Reconciliation Rules
 
@@ -67,13 +71,16 @@ These checks run when reference files are uploaded with transactions.
 | --- | --- | --- | --- | --- |
 | Unknown vendor reference | `unknown_vendor_reference` | error | Transaction references a vendor missing from the vendor file. | Confirm whether the vendor should be approved or investigate the payment. |
 | Possible vendor match | `possible_vendor_match` | warning | Exact vendor match failed, but a similar vendor name was found above the confidence threshold. | Review the suggested match and confirm whether the transaction should be linked to that vendor. |
-| Duplicate vendor key | `duplicate_vendor_reference` | error | Vendor file has duplicate vendor IDs or duplicate matched vendor keys. | Correct or merge duplicate vendor master records. |
+| Vendor ID/name mismatch | `vendor_reference_mismatch` | warning | Vendor ID is unknown, but the payee name exactly matches a different approved vendor. | Confirm the intended vendor and correct the transaction or vendor master reference. |
+| Duplicate vendor key/name | `duplicate_vendor_reference` | error | Vendor file has duplicate normalized vendor IDs or names. | Correct or merge duplicate vendor master records. |
 | Unknown beneficiary reference | `unknown_beneficiary_reference` | error | Transaction references a beneficiary missing from the beneficiary register. | Confirm beneficiary identity before approving payment. |
 | Duplicate beneficiary key | `duplicate_beneficiary_reference` | error | Beneficiary file has duplicate beneficiary IDs. | Correct duplicate beneficiary records and check for overpayment risk. |
 | Beneficiary overpayment | `beneficiary_overpaid` | error | Total payments to a beneficiary exceed `expected_amount` in the beneficiary register. | Confirm entitlement, approvals, and whether the excess payment should be recovered or explained. |
 | Unknown budget line | `unknown_budget_line` | error | Transactions reference a budget line/category missing from the budget file. | Confirm the correct budget line or update the approved budget file. |
 | Budget overspend | `budget_line_overspent` | error | Actual spend for a budget line exceeds `approved_amount`. | Review donor approval, budget amendments, and support for the overspend. |
 | Duplicate budget key | `duplicate_budget_reference` | error | Budget file has duplicate budget line/category references. | Keep one authoritative row per budget reference. |
+
+Beneficiary entitlement and budget comparisons use shared context fields when both files provide them: `currency`, `period`, `programme_id`, `project_id`, `donor`, and `location`. This prevents unrelated currencies, periods, programmes, or locations from being combined. The mapping layer recognizes common headers for these fields.
 
 ## Skipped Checks
 
@@ -96,15 +103,16 @@ The system currently answers:
 - whether reference files contain duplicate keys.
 - whether beneficiaries received more than expected.
 - whether spend exceeds approved budget lines.
+- whether running balances reconcile when the statement provides enough evidence to infer its sign convention.
+- whether one payee represents a high share of transaction value within a currency population.
 - which findings and transaction rows should be reviewed first using deterministic priority scores.
 - which transactions look unusual compared with the uploaded transaction population, using the separate ML/anomaly review output.
 
-It does not yet perform vendor concentration, threshold structuring, or timing anomaly analysis.
+It does not establish that the uploaded population is complete unless a usable running balance is present. It also does not inspect approvals or source documents, confirm bank balances externally, test segregation of duties, or conclude whether fraud occurred.
 
 ## Planned Next Rules
 
 | Planned rule | Risk question |
 | --- | --- |
-| Vendor concentration | Is too much spend going to one vendor? |
 | Threshold structuring | Are payments clustered just below review thresholds? |
 | Timing anomalies | Are payments clustered around weekends, month-end, or project closeout? |

@@ -44,6 +44,122 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual(["unknown_vendor_reference"], issues["issue_type"].tolist())
         self.assertEqual(["Missing Vendor"], issues["related_record_id"].tolist())
 
+    def test_vendor_reference_falls_back_to_name_when_vendor_id_is_blank(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "vendor_id": ["VEN-001", ""],
+                "counterparty": ["Vendor One", "Vendor Two"],
+            },
+        )
+        vendors = _dataset(
+            DatasetType.VENDORS,
+            {
+                "vendor_id": ["VEN-001", "VEN-002"],
+                "vendor_name": ["Vendor One", "Vendor Two"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, vendors=vendors))
+
+        self.assertTrue(result.issues_dataframe().empty)
+
+    def test_vendor_reference_uses_name_to_report_unknown_when_vendor_id_is_blank(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001"],
+                "vendor_id": [""],
+                "counterparty": ["Missing Vendor"],
+            },
+        )
+        vendors = _dataset(
+            DatasetType.VENDORS,
+            {
+                "vendor_id": ["VEN-001"],
+                "vendor_name": ["Vendor One"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, vendors=vendors))
+        issues = result.issues_dataframe()
+
+        self.assertEqual(["unknown_vendor_reference"], issues["issue_type"].tolist())
+        self.assertEqual(["Missing Vendor"], issues["related_record_id"].tolist())
+
+    def test_vendor_reference_skips_beneficiary_payment_without_vendor_id(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001"],
+                "vendor_id": [""],
+                "beneficiary_id": ["BEN-001"],
+                "counterparty": ["Asha Mohamed"],
+            },
+        )
+        vendors = _dataset(
+            DatasetType.VENDORS,
+            {
+                "vendor_id": ["VEN-001"],
+                "vendor_name": ["Approved Supplier"],
+            },
+        )
+
+        issues = reconcile_bundle(
+            AuditBundle(transactions=transactions, vendors=vendors)
+        ).issues_dataframe()
+
+        self.assertNotIn("unknown_vendor_reference", issues["issue_type"].tolist())
+
+    def test_vendor_reference_reports_id_name_conflict_instead_of_unknown_vendor(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001"],
+                "vendor_id": ["VEN-404"],
+                "counterparty": ["Vendor One"],
+            },
+        )
+        vendors = _dataset(
+            DatasetType.VENDORS,
+            {
+                "vendor_id": ["VEN-001"],
+                "vendor_name": ["Vendor One"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, vendors=vendors))
+        issues = result.issues_dataframe()
+
+        self.assertEqual(["vendor_reference_mismatch"], issues["issue_type"].tolist())
+        self.assertEqual(["warning"], issues["severity"].tolist())
+        self.assertEqual(["VEN-001"], issues["related_record_id"].tolist())
+        self.assertIn("VEN-404", issues.loc[0, "message"])
+
+    def test_vendor_reference_matches_each_row_using_best_available_key(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001", "TXN-002", "TXN-003"],
+                "vendor_id": ["VEN-001", "", "VEN-404"],
+                "counterparty": ["Vendor One", "Vendor Two", "Hormuud Telecom"],
+            },
+        )
+        vendors = _dataset(
+            DatasetType.VENDORS,
+            {
+                "vendor_id": ["VEN-001", "VEN-002", "VEN-003"],
+                "vendor_name": ["Vendor One", "Vendor Two", "HORMUUD TELECOM LTD"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, vendors=vendors))
+        issues = result.issues_dataframe()
+
+        self.assertEqual(["possible_vendor_match"], issues["issue_type"].tolist())
+        self.assertEqual(["TXN-003"], issues["transaction_id"].tolist())
+
     def test_vendor_reference_fuzzy_match_is_review_warning(self):
         transactions = _dataset(
             DatasetType.TRANSACTIONS,
@@ -137,6 +253,34 @@ class ReconciliationTests(unittest.TestCase):
         )
         self.assertEqual(["vendors", "vendors"], issues["dataset"].tolist())
         self.assertEqual([2, 3], issues["row_number"].tolist())
+
+    def test_vendor_reference_reports_duplicate_names_with_different_ids(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001"],
+                "vendor_id": ["VEN-404"],
+                "counterparty": ["Shared Vendor"],
+            },
+        )
+        vendors = _dataset(
+            DatasetType.VENDORS,
+            {
+                "vendor_id": ["VEN-001", "VEN-002"],
+                "vendor_name": ["Shared Vendor", "shared vendor"],
+            },
+        )
+
+        issues = reconcile_bundle(
+            AuditBundle(transactions=transactions, vendors=vendors)
+        ).issues_dataframe()
+
+        duplicate_names = issues[
+            issues["issue_type"].eq("duplicate_vendor_reference")
+            & issues["field"].eq("vendor_name")
+        ]
+        self.assertEqual(2, len(duplicate_names))
+        self.assertNotIn("vendor_reference_mismatch", issues["issue_type"].tolist())
 
     def test_flags_transaction_beneficiary_missing_from_register(self):
         transactions = _dataset(
@@ -232,6 +376,86 @@ class ReconciliationTests(unittest.TestCase):
         issues = result.issues_dataframe()
 
         self.assertIn("beneficiary_overpaid", issues["issue_type"].tolist())
+
+    def test_beneficiary_entitlement_is_compared_separately_by_currency(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "beneficiary_id": ["BEN-001", "BEN-001"],
+                "currency": ["USD", "EUR"],
+                "amount": ["150", "150"],
+            },
+        )
+        beneficiaries = _dataset(
+            DatasetType.BENEFICIARIES,
+            {
+                "beneficiary_id": ["BEN-001", "BEN-001"],
+                "beneficiary_name": ["Beneficiary One", "Beneficiary One"],
+                "currency": ["USD", "EUR"],
+                "expected_amount": ["200", "200"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, beneficiaries=beneficiaries))
+        issue_types = result.issues_dataframe()["issue_type"].tolist()
+
+        self.assertNotIn("beneficiary_overpaid", issue_types)
+        self.assertNotIn("duplicate_beneficiary_reference", issue_types)
+
+    def test_beneficiary_overpayment_identifies_its_currency_context(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "beneficiary_id": ["BEN-001", "BEN-001"],
+                "currency": ["USD", "EUR"],
+                "amount": ["250", "100"],
+            },
+        )
+        beneficiaries = _dataset(
+            DatasetType.BENEFICIARIES,
+            {
+                "beneficiary_id": ["BEN-001", "BEN-001"],
+                "beneficiary_name": ["Beneficiary One", "Beneficiary One"],
+                "currency": ["USD", "EUR"],
+                "expected_amount": ["200", "200"],
+            },
+        )
+
+        issues = reconcile_bundle(
+            AuditBundle(transactions=transactions, beneficiaries=beneficiaries)
+        ).issues_dataframe()
+        overpaid = issues[issues["issue_type"].eq("beneficiary_overpaid")]
+
+        self.assertEqual(1, len(overpaid))
+        self.assertIn("currency USD", overpaid.iloc[0]["message"])
+
+    def test_beneficiary_entitlement_is_compared_separately_by_period(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "beneficiary_id": ["BEN-001", "BEN-001"],
+                "period": ["2026-01", "2026-02"],
+                "amount": ["150", "150"],
+            },
+        )
+        beneficiaries = _dataset(
+            DatasetType.BENEFICIARIES,
+            {
+                "beneficiary_id": ["BEN-001", "BEN-001"],
+                "beneficiary_name": ["Beneficiary One", "Beneficiary One"],
+                "period": ["2026-01", "2026-02"],
+                "expected_amount": ["200", "200"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, beneficiaries=beneficiaries))
+        issue_types = result.issues_dataframe()["issue_type"].tolist()
+
+        self.assertNotIn("beneficiary_overpaid", issue_types)
+        self.assertNotIn("duplicate_beneficiary_reference", issue_types)
 
     def test_beneficiary_entitlement_is_skipped_without_expected_amount(self):
         transactions = _dataset(
@@ -331,6 +555,87 @@ class ReconciliationTests(unittest.TestCase):
 
         self.assertIn("budget_line_overspent", issues["issue_type"].tolist())
         self.assertNotIn("unknown_budget_line", issues["issue_type"].tolist())
+
+    def test_budget_reconciliation_is_compared_separately_by_currency(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "budget_line_id": ["BL-FOOD", "BL-FOOD"],
+                "currency": ["USD", "EUR"],
+                "amount": ["600", "600"],
+            },
+        )
+        budget = _dataset(
+            DatasetType.BUDGET,
+            {
+                "budget_line_id": ["BL-FOOD", "BL-FOOD"],
+                "budget_name": ["Food assistance", "Food assistance"],
+                "currency": ["USD", "EUR"],
+                "approved_amount": ["1,000", "1,000"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, budget=budget))
+        issue_types = result.issues_dataframe()["issue_type"].tolist()
+
+        self.assertNotIn("budget_line_overspent", issue_types)
+        self.assertNotIn("duplicate_budget_reference", issue_types)
+
+    def test_budget_overspend_identifies_its_currency_context(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "budget_line_id": ["BL-FOOD", "BL-FOOD"],
+                "currency": ["USD", "EUR"],
+                "amount": ["1,100", "600"],
+            },
+        )
+        budget = _dataset(
+            DatasetType.BUDGET,
+            {
+                "budget_line_id": ["BL-FOOD", "BL-FOOD"],
+                "budget_name": ["Food assistance", "Food assistance"],
+                "currency": ["USD", "EUR"],
+                "approved_amount": ["1,000", "1,000"],
+            },
+        )
+
+        issues = reconcile_bundle(
+            AuditBundle(transactions=transactions, budget=budget)
+        ).issues_dataframe()
+        overspent = issues[issues["issue_type"].eq("budget_line_overspent")]
+
+        self.assertEqual(1, len(overspent))
+        self.assertIn("currency USD", overspent.iloc[0]["message"])
+
+    def test_budget_reconciliation_is_compared_separately_by_period(self):
+        transactions = _dataset(
+            DatasetType.TRANSACTIONS,
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "budget_line_id": ["BL-FOOD", "BL-FOOD"],
+                "period": ["2026-01", "2026-02"],
+                "amount": ["600", "600"],
+            },
+        )
+        budget = _dataset(
+            DatasetType.BUDGET,
+            {
+                "budget_line_id": ["BL-FOOD", "BL-FOOD"],
+                "budget_name": ["Food assistance", "Food assistance"],
+                "period": ["2026-01", "2026-02"],
+                "currency": ["USD", "USD"],
+                "approved_amount": ["1,000", "1,000"],
+            },
+        )
+
+        result = reconcile_bundle(AuditBundle(transactions=transactions, budget=budget))
+        issue_types = result.issues_dataframe()["issue_type"].tolist()
+
+        self.assertNotIn("budget_line_overspent", issue_types)
+        self.assertNotIn("duplicate_budget_reference", issue_types)
 
     def test_budget_reconciliation_skips_without_budget_line(self):
         transactions = _dataset(

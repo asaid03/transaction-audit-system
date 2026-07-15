@@ -137,6 +137,21 @@ ISSUE_GUIDANCE = {
         "why_it_matters": "The transaction uses a currency that may be outside the expected audit scope.",
         "recommended_action": "Confirm whether this currency belongs in the review and whether conversion evidence is available.",
     },
+    "vendor_reference_mismatch": {
+        "finding": "Vendor ID and payee name disagree",
+        "why_it_matters": "The payee name matches an approved vendor, but the transaction carries a different or unknown vendor ID.",
+        "recommended_action": "Confirm the intended vendor and correct the transaction or vendor master reference before relying on the match.",
+    },
+    "vendor_concentration": {
+        "finding": "High concentration of transaction value with one payee",
+        "why_it_matters": "A large share of reviewed transaction value relates to one payee, which can increase dependency and procurement risk.",
+        "recommended_action": "Review procurement evidence, competitive sourcing, approvals, and the business reason for the concentration.",
+    },
+    "balance_movement_mismatch": {
+        "finding": "Running balance does not reconcile",
+        "why_it_matters": "The reported balance movement does not agree with the transaction amount using the statement's inferred sign convention.",
+        "recommended_action": "Compare this row and the preceding row with the source statement and check for omitted, duplicated, or incorrectly signed entries.",
+    },
     "large_amount": {
         "finding": "Large amount transaction",
         "why_it_matters": "The payment is above the amount selected for additional review.",

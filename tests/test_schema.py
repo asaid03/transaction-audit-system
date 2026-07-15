@@ -110,6 +110,48 @@ class SchemaTests(unittest.TestCase):
         self.assertEqual("Recipient Code", plan.canonical_to_source["beneficiary_id"])
         self.assertEqual("Recipient", plan.canonical_to_source["beneficiary_name"])
 
+    def test_beneficiary_mapping_detects_entitlement_and_context_fields(self):
+        dataframe = pd.DataFrame(
+            columns=[
+                "Recipient Code",
+                "Recipient",
+                "Entitlement Amount",
+                "CCY",
+                "Reporting Period",
+                "Programme Code",
+            ]
+        )
+
+        plan = build_mapping_plan(dataframe, dataset_type=DatasetType.BENEFICIARIES)
+
+        self.assertEqual("Entitlement Amount", plan.canonical_to_source["expected_amount"])
+        self.assertEqual("CCY", plan.canonical_to_source["currency"])
+        self.assertEqual("Reporting Period", plan.canonical_to_source["period"])
+        self.assertEqual("Programme Code", plan.canonical_to_source["programme_id"])
+
+    def test_transaction_and_budget_mapping_detect_reconciliation_context(self):
+        transactions = pd.DataFrame(
+            columns=["txn_ref", "date", "amt", "ccy", "Project Code", "Reporting Period"]
+        )
+        budget = pd.DataFrame(
+            columns=[
+                "Budget Code",
+                "Budget Name",
+                "Budget Amount",
+                "CCY",
+                "Project Code",
+                "Reporting Period",
+            ]
+        )
+
+        transaction_plan = build_mapping_plan(transactions, dataset_type=DatasetType.TRANSACTIONS)
+        budget_plan = build_mapping_plan(budget, dataset_type=DatasetType.BUDGET)
+
+        self.assertEqual("Project Code", transaction_plan.canonical_to_source["project_id"])
+        self.assertEqual("Reporting Period", transaction_plan.canonical_to_source["period"])
+        self.assertEqual("Project Code", budget_plan.canonical_to_source["project_id"])
+        self.assertEqual("Reporting Period", budget_plan.canonical_to_source["period"])
+
     def test_transaction_mapping_can_include_reference_columns(self):
         dataframe = pd.DataFrame(
             columns=[

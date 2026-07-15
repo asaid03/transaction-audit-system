@@ -127,6 +127,57 @@ class AuditTests(unittest.TestCase):
         self.assertEqual("High", findings.loc[0, "priority"])
         self.assertEqual("Payment references an unapproved or missing vendor", findings.loc[0, "finding"])
 
+    def test_new_population_and_vendor_findings_have_reviewer_guidance(self):
+        issues = pd.DataFrame(
+            [
+                {
+                    "dataset": "transactions",
+                    "row_number": 17,
+                    "transaction_id": "TXN-001",
+                    "field": "balance",
+                    "issue_type": "balance_movement_mismatch",
+                    "severity": "warning",
+                    "related_dataset": "transactions",
+                    "related_record_id": "TXN-000",
+                    "message": "Balance does not reconcile.",
+                },
+                {
+                    "dataset": "transactions",
+                    "row_number": None,
+                    "transaction_id": None,
+                    "field": "counterparty",
+                    "issue_type": "vendor_concentration",
+                    "severity": "warning",
+                    "related_dataset": "transactions",
+                    "related_record_id": "Vendor A",
+                    "message": "Vendor A represents 60% of value.",
+                },
+                {
+                    "dataset": "transactions",
+                    "row_number": 20,
+                    "transaction_id": "TXN-002",
+                    "field": "vendor_id",
+                    "issue_type": "vendor_reference_mismatch",
+                    "severity": "warning",
+                    "related_dataset": "vendors",
+                    "related_record_id": "VEN-001",
+                    "message": "ID and name disagree.",
+                },
+            ]
+        )
+
+        findings = review_findings_dataframe(issues)
+
+        self.assertEqual(
+            {
+                "Running balance does not reconcile",
+                "High concentration of transaction value with one payee",
+                "Vendor ID and payee name disagree",
+            },
+            set(findings["finding"]),
+        )
+        self.assertTrue(findings["recommended_action"].astype(str).str.len().gt(20).all())
+
     def test_build_bundle_audit_workbook_contains_multi_file_review_sheets(self):
         transactions = pd.DataFrame(
             {
