@@ -92,6 +92,11 @@ ISSUE_GUIDANCE = {
         "why_it_matters": "The payment resembles another transaction by date, amount, and payee.",
         "recommended_action": "Compare the matching payments and confirm whether both should exist.",
     },
+    "possible_split_payment": {
+        "finding": "Payments may have been split around an approval threshold",
+        "why_it_matters": "Related payments are individually below the review threshold but meet or exceed it when combined.",
+        "recommended_action": "Compare the related transactions and confirm whether they belong to one invoice that required higher approval.",
+    },
     "missing_invoice_reference": {
         "finding": "Invoice or reference is missing",
         "why_it_matters": "Missing invoice evidence makes it harder to confirm the payment purpose and supporting documentation.",

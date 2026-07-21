@@ -35,6 +35,7 @@ Checks include:
 - unsupported currencies
 - duplicate transaction IDs
 - possible duplicate payments
+- possible split payments where same-day, same-invoice payments are individually below a £5,000 review threshold but meet or exceed it when combined
 - missing invoice/reference values when an invoice/reference column is present
 - running-balance movements that do not reconcile, when a usable balance column exists
 - high payee concentration in sufficiently large, varied populations, assessed separately by currency
@@ -64,7 +65,7 @@ Checks include:
 - vendor ID/name disagreements and duplicate vendor names
 - entitlement and budget comparisons separated by shared currency, period, programme, project, donor, or location context
 
-Threshold structuring and timing anomaly checks are planned later.
+Broader threshold structuring and timing anomaly checks are planned later.
 
 ## Audit Workbook
 

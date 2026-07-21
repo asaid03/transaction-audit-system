@@ -163,6 +163,17 @@ class AuditTests(unittest.TestCase):
                     "related_record_id": "VEN-001",
                     "message": "ID and name disagree.",
                 },
+                {
+                    "dataset": "transactions",
+                    "row_number": 21,
+                    "transaction_id": "TXN-003",
+                    "field": "amount",
+                    "issue_type": "possible_split_payment",
+                    "severity": "warning",
+                    "related_dataset": None,
+                    "related_record_id": "TXN-004",
+                    "message": "Related payments total GBP 9,875.00.",
+                },
             ]
         )
 
@@ -173,6 +184,7 @@ class AuditTests(unittest.TestCase):
                 "Running balance does not reconcile",
                 "High concentration of transaction value with one payee",
                 "Vendor ID and payee name disagree",
+                "Payments may have been split around an approval threshold",
             },
             set(findings["finding"]),
         )

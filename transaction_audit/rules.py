@@ -292,6 +292,107 @@ def check_possible_duplicate_payments(
     return issues
 
 
+def check_possible_split_payments(
+    checked: pd.DataFrame,
+    config: ValidationConfig,
+) -> list[ValidationIssue]:
+    required_columns = {
+        "transaction_id",
+        "transaction_date",
+        "amount",
+        "currency",
+        "counterparty",
+        "invoice_reference",
+    }
+    if not required_columns.issubset(checked.columns):
+        return []
+
+    threshold = float(config.split_payment_threshold)
+    if threshold <= 0:
+        return []
+
+    working = checked.copy()
+    working["_date_key"] = pd.to_datetime(
+        working["transaction_date"], errors="coerce"
+    ).dt.normalize()
+    for source, target in (
+        ("counterparty", "_counterparty_key"),
+        ("currency", "_currency_key"),
+        ("invoice_reference", "_invoice_key"),
+    ):
+        working[target] = (
+            working[source]
+            .astype("string")
+            .str.strip()
+            .str.lower()
+            .str.replace(r"\s+", " ", regex=True)
+        )
+
+    usable = working[
+        working["transaction_id"].notna()
+        & working["transaction_id"].astype("string").str.strip().ne("")
+        & working["_date_key"].notna()
+        & working["amount"].notna()
+        & working["amount"].gt(0)
+        & working["amount"].lt(threshold)
+        & working["_counterparty_key"].notna()
+        & working["_counterparty_key"].ne("")
+        & working["_currency_key"].notna()
+        & working["_currency_key"].ne("")
+        & working["_invoice_key"].notna()
+        & working["_invoice_key"].ne("")
+    ]
+    if len(usable) < 2:
+        return []
+
+    issues = []
+    group_columns = ["_date_key", "_counterparty_key", "_currency_key", "_invoice_key"]
+    for _, group in usable.groupby(group_columns, dropna=False, sort=False):
+        transaction_ids = sorted(
+            {
+                transaction_id
+                for transaction_id in group["transaction_id"].map(_clean_optional)
+                if transaction_id is not None
+            }
+        )
+        if len(transaction_ids) < 2:
+            continue
+
+        combined_amount = float(group["amount"].sum())
+        if combined_amount < threshold:
+            continue
+
+        currency = str(group["currency"].iloc[0]).strip()
+        invoice_reference = str(group["invoice_reference"].iloc[0]).strip()
+        for index, row in group.to_dict("index").items():
+            transaction_id = _clean_optional(row["transaction_id"])
+            related_ids = ", ".join(
+                peer_id for peer_id in transaction_ids if peer_id != transaction_id
+            )
+            position = source_row_number_at_position(
+                checked,
+                int(checked.index.get_loc(index)),
+            )
+            issues.append(
+                make_issue(
+                    row_number=position,
+                    row=row,
+                    field="amount",
+                    issue_type="possible_split_payment",
+                    severity="warning",
+                    message=(
+                        f"This payment and transaction(s) {related_ids} share invoice/reference "
+                        f"{invoice_reference}, payee, date and currency. Their combined value is "
+                        f"{currency} {combined_amount:,.2f}, meeting or exceeding the {currency} review threshold "
+                        f"of {threshold:,.2f}."
+                    ),
+                    related_record_id=related_ids,
+                )
+            )
+
+    return issues
+
+
 def rows_matching(dataframe: pd.DataFrame, mask: pd.Series):
     matched_mask = mask.fillna(False).astype(bool).to_numpy()
     positions = source_row_numbers(dataframe).loc[matched_mask].tolist()

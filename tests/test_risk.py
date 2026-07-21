@@ -84,6 +84,32 @@ class RiskTests(unittest.TestCase):
         self.assertEqual([0, 0], review["review_priority_score"].tolist())
         self.assertEqual(["low", "low"], review["review_priority_band"].tolist())
 
+    def test_possible_split_payment_is_explainable_high_priority(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "transaction_date": ["2025-11-25", "2025-11-25"],
+                "account_id": ["OPS", "OPS"],
+                "amount": ["4950.00", "4925.00"],
+                "currency": ["GBP", "GBP"],
+                "counterparty": ["Vendor A", "Vendor A"],
+                "invoice_reference": ["SP-001-INV", "SP-001-INV"],
+            }
+        )
+        result = validate_transactions(dataframe)
+
+        review = score_transactions(result.transactions, result.issues_dataframe())
+
+        self.assertEqual([75, 75], review["review_priority_score"].tolist())
+        self.assertEqual(["high", "high"], review["review_priority_band"].tolist())
+        self.assertEqual(
+            [
+                "Possible split payment with TXN-002",
+                "Possible split payment with TXN-001",
+            ],
+            review["review_priority_drivers"].tolist(),
+        )
+
     def test_transaction_review_preserves_source_file_row_numbers(self):
         dataframe = pd.DataFrame(
             {

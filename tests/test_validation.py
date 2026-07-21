@@ -2,6 +2,7 @@ import unittest
 
 import pandas as pd
 
+from transaction_audit.config import ValidationConfig
 from transaction_audit.validation import validate_transactions
 
 
@@ -307,6 +308,90 @@ class ValidationTests(unittest.TestCase):
         )
         self.assertEqual(["TXN-002", "TXN-001"], issues["related_record_id"].tolist())
         self.assertTrue(issues["message"].str.contains("INV-001", regex=False).all())
+
+    def test_flags_possible_split_payment_crossing_approval_threshold(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "transaction_date": ["2025-11-25", "2025-11-25"],
+                "account_id": ["OPS", "OPS"],
+                "amount": ["3000.00", "2500.00"],
+                "currency": ["GBP", "GBP"],
+                "counterparty": ["Vendor A", "Vendor A"],
+                "invoice_reference": ["SP-001-INV", "SP-001-INV"],
+            }
+        )
+
+        issues = validate_transactions(dataframe).issues_dataframe()
+        split_issues = issues[issues["issue_type"].eq("possible_split_payment")]
+
+        self.assertEqual(["TXN-001", "TXN-002"], split_issues["transaction_id"].tolist())
+        self.assertEqual(["TXN-002", "TXN-001"], split_issues["related_record_id"].tolist())
+        self.assertTrue(split_issues["message"].str.contains("5,500.00", regex=False).all())
+        self.assertTrue(split_issues["message"].str.contains("5,000.00", regex=False).all())
+
+    def test_split_payment_threshold_is_configurable(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "transaction_date": ["2025-11-25", "2025-11-25"],
+                "account_id": ["OPS", "OPS"],
+                "amount": ["9500.00", "9600.00"],
+                "currency": ["GBP", "GBP"],
+                "counterparty": ["Vendor A", "Vendor A"],
+                "invoice_reference": ["SP-001-INV", "SP-001-INV"],
+            }
+        )
+
+        issues = validate_transactions(
+            dataframe,
+            config=ValidationConfig(split_payment_threshold=10000.0),
+        ).issues_dataframe()
+
+        self.assertEqual(2, int(issues["issue_type"].eq("possible_split_payment").sum()))
+
+    def test_split_payment_rule_avoids_incomplete_or_non_threshold_groups(self):
+        cases = {
+            "different date": {
+                "transaction_date": ["2025-11-25", "2025-11-26"],
+            },
+            "different invoice": {
+                "invoice_reference": ["INV-001", "INV-002"],
+            },
+            "blank invoice": {
+                "invoice_reference": ["", ""],
+            },
+            "different payee": {
+                "counterparty": ["Vendor A", "Vendor B"],
+            },
+            "different currency": {
+                "currency": ["GBP", "EUR"],
+            },
+            "combined below threshold": {
+                "amount": ["2000.00", "2500.00"],
+            },
+            "non-positive component": {
+                "amount": ["-100.00", "4950.00"],
+            },
+            "same transaction id": {
+                "transaction_id": ["TXN-001", "TXN-001"],
+            },
+        }
+        base = {
+            "transaction_id": ["TXN-001", "TXN-002"],
+            "transaction_date": ["2025-11-25", "2025-11-25"],
+            "account_id": ["OPS", "OPS"],
+            "amount": ["4950.00", "4925.00"],
+            "currency": ["GBP", "GBP"],
+            "counterparty": ["Vendor A", "Vendor A"],
+            "invoice_reference": ["INV-001", "INV-001"],
+        }
+
+        for name, override in cases.items():
+            with self.subTest(name=name):
+                dataframe = pd.DataFrame({**base, **override})
+                issue_types = validate_transactions(dataframe).issues_dataframe()["issue_type"].tolist()
+                self.assertNotIn("possible_split_payment", issue_types)
 
     def test_population_relative_large_amount_is_not_a_validation_issue(self):
         rows = [

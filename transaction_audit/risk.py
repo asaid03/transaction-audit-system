@@ -45,6 +45,7 @@ ISSUE_SIGNALS = {
     "duplicate_beneficiary_reference": RiskSignal(75, "high", "Duplicate beneficiary key in reference file"),
     "duplicate_budget_reference": RiskSignal(75, "high", "Duplicate budget key in reference file"),
     "possible_duplicate_payment": RiskSignal(70, "high", "Possible duplicate payment"),
+    "possible_split_payment": RiskSignal(75, "high", "Possible split payment around the review threshold"),
     "large_amount": RiskSignal(65, "medium", "Payment is above the review limit"),
     "unsupported_currency": RiskSignal(60, "medium", "Currency is not in the expected list"),
     "vendor_reference_mismatch": RiskSignal(60, "medium", "Vendor ID and payee name point to different records"),
@@ -156,10 +157,15 @@ def _signal_for_issue(issue: dict[str, object]) -> RiskSignal:
     issue_type = str(issue.get("issue_type", ""))
     if issue_type in ISSUE_SIGNALS:
         signal = ISSUE_SIGNALS[issue_type]
-        if issue_type == "possible_duplicate_payment":
+        if issue_type in {"possible_duplicate_payment", "possible_split_payment"}:
             related_ids = _display_text(issue.get("related_record_id"))
             if related_ids:
-                return RiskSignal(signal.points, signal.band, f"Possible duplicate of {related_ids}")
+                description = (
+                    "Possible duplicate of"
+                    if issue_type == "possible_duplicate_payment"
+                    else "Possible split payment with"
+                )
+                return RiskSignal(signal.points, signal.band, f"{description} {related_ids}")
         return signal
     severity = str(issue.get("severity", "")).lower()
     return SEVERITY_FALLBACKS.get(severity, RiskSignal(10, "low", "Issue should be reviewed"))
