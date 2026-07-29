@@ -27,6 +27,7 @@ TRANSACTION_REVIEW_DISPLAY_COLUMNS = [
     "transaction_date",
     "account_id",
     "invoice_reference",
+    "invoice_amount",
     "amount",
     "currency",
     "counterparty",
@@ -43,6 +44,7 @@ ML_ANOMALY_DISPLAY_COLUMNS = [
     "transaction_date",
     "account_id",
     "invoice_reference",
+    "invoice_amount",
     "amount",
     "currency",
     "counterparty",
@@ -133,6 +135,7 @@ def display_review_queue(transaction_review: pd.DataFrame) -> pd.DataFrame:
             "account_id": reviewable.get("account_id", ""),
             "currency": reviewable.get("currency", ""),
             "invoice_reference": reviewable.get("invoice_reference", ""),
+            "invoice_amount": reviewable.get("invoice_amount", ""),
         }
     )
     return clean_display_frame(display)

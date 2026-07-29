@@ -35,7 +35,7 @@ Checks include:
 - unsupported currencies
 - duplicate transaction IDs
 - possible duplicate payments
-- possible split payments where same-day, same-invoice payments are individually below a £5,000 review threshold but meet or exceed it when combined
+- possible split payments where partial payments for the same vendor and invoice reconcile to the invoice total
 - missing invoice/reference values when an invoice/reference column is present
 - running-balance movements that do not reconcile, when a usable balance column exists
 - high payee concentration in sufficiently large, varied populations, assessed separately by currency

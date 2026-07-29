@@ -298,23 +298,20 @@ def check_possible_split_payments(
 ) -> list[ValidationIssue]:
     required_columns = {
         "transaction_id",
-        "transaction_date",
         "amount",
         "currency",
         "counterparty",
         "invoice_reference",
+        "invoice_amount",
     }
     if not required_columns.issubset(checked.columns):
         return []
 
-    threshold = float(config.split_payment_threshold)
-    if threshold <= 0:
+    tolerance = float(config.invoice_amount_tolerance)
+    if tolerance < 0:
         return []
 
     working = checked.copy()
-    working["_date_key"] = pd.to_datetime(
-        working["transaction_date"], errors="coerce"
-    ).dt.normalize()
     for source, target in (
         ("counterparty", "_counterparty_key"),
         ("currency", "_currency_key"),
@@ -331,10 +328,6 @@ def check_possible_split_payments(
     usable = working[
         working["transaction_id"].notna()
         & working["transaction_id"].astype("string").str.strip().ne("")
-        & working["_date_key"].notna()
-        & working["amount"].notna()
-        & working["amount"].gt(0)
-        & working["amount"].lt(threshold)
         & working["_counterparty_key"].notna()
         & working["_counterparty_key"].ne("")
         & working["_currency_key"].notna()
@@ -346,7 +339,7 @@ def check_possible_split_payments(
         return []
 
     issues = []
-    group_columns = ["_date_key", "_counterparty_key", "_currency_key", "_invoice_key"]
+    group_columns = ["_counterparty_key", "_currency_key", "_invoice_key"]
     for _, group in usable.groupby(group_columns, dropna=False, sort=False):
         transaction_ids = sorted(
             {
@@ -358,8 +351,24 @@ def check_possible_split_payments(
         if len(transaction_ids) < 2:
             continue
 
-        combined_amount = float(group["amount"].sum())
-        if combined_amount < threshold:
+        payment_amounts = pd.to_numeric(group["amount"], errors="coerce")
+        invoice_amounts = pd.to_numeric(group["invoice_amount"], errors="coerce")
+        if (
+            payment_amounts.isna().any()
+            or invoice_amounts.isna().any()
+            or payment_amounts.le(0).any()
+            or invoice_amounts.le(0).any()
+        ):
+            continue
+
+        invoice_total = float(invoice_amounts.iloc[0])
+        if invoice_amounts.sub(invoice_total).abs().gt(tolerance).any():
+            continue
+        if payment_amounts.ge(invoice_total - tolerance).any():
+            continue
+
+        combined_amount = float(payment_amounts.sum())
+        if abs(combined_amount - invoice_total) > tolerance:
             continue
 
         currency = str(group["currency"].iloc[0]).strip()
@@ -382,9 +391,10 @@ def check_possible_split_payments(
                     severity="warning",
                     message=(
                         f"This payment and transaction(s) {related_ids} share invoice/reference "
-                        f"{invoice_reference}, payee, date and currency. Their combined value is "
-                        f"{currency} {combined_amount:,.2f}, meeting or exceeding the {currency} review threshold "
-                        f"of {threshold:,.2f}."
+                        f"{invoice_reference}, payee and currency. Their combined payments of "
+                        f"{currency} {combined_amount:,.2f} match the invoice total of "
+                        f"{currency} {invoice_total:,.2f}, while no individual payment settles "
+                        "the full invoice."
                     ),
                     related_record_id=related_ids,
                 )

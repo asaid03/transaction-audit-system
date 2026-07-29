@@ -2,7 +2,6 @@ import unittest
 
 import pandas as pd
 
-from transaction_audit.config import ValidationConfig
 from transaction_audit.validation import validate_transactions
 
 
@@ -309,16 +308,17 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(["TXN-002", "TXN-001"], issues["related_record_id"].tolist())
         self.assertTrue(issues["message"].str.contains("INV-001", regex=False).all())
 
-    def test_flags_possible_split_payment_crossing_approval_threshold(self):
+    def test_flags_partial_payments_that_reconcile_to_invoice_amount(self):
         dataframe = pd.DataFrame(
             {
                 "transaction_id": ["TXN-001", "TXN-002"],
-                "transaction_date": ["2025-11-25", "2025-11-25"],
+                "transaction_date": ["2025-11-25", "2025-12-02"],
                 "account_id": ["OPS", "OPS"],
-                "amount": ["3000.00", "2500.00"],
+                "amount": ["4542.50", "5332.50"],
                 "currency": ["GBP", "GBP"],
                 "counterparty": ["Vendor A", "Vendor A"],
                 "invoice_reference": ["SP-001-INV", "SP-001-INV"],
+                "invoice_amount": ["9875.00", "9875.00"],
             }
         )
 
@@ -327,34 +327,30 @@ class ValidationTests(unittest.TestCase):
 
         self.assertEqual(["TXN-001", "TXN-002"], split_issues["transaction_id"].tolist())
         self.assertEqual(["TXN-002", "TXN-001"], split_issues["related_record_id"].tolist())
-        self.assertTrue(split_issues["message"].str.contains("5,500.00", regex=False).all())
-        self.assertTrue(split_issues["message"].str.contains("5,000.00", regex=False).all())
+        self.assertTrue(split_issues["message"].str.contains("9,875.00", regex=False).all())
+        self.assertTrue(split_issues["message"].str.contains("invoice total", regex=False).all())
 
-    def test_split_payment_threshold_is_configurable(self):
+    def test_full_invoice_payments_are_duplicates_not_split_payments(self):
         dataframe = pd.DataFrame(
             {
                 "transaction_id": ["TXN-001", "TXN-002"],
-                "transaction_date": ["2025-11-25", "2025-11-25"],
+                "transaction_date": ["2025-11-25", "2025-12-02"],
                 "account_id": ["OPS", "OPS"],
-                "amount": ["9500.00", "9600.00"],
+                "amount": ["3250.00", "3250.00"],
                 "currency": ["GBP", "GBP"],
                 "counterparty": ["Vendor A", "Vendor A"],
-                "invoice_reference": ["SP-001-INV", "SP-001-INV"],
+                "invoice_reference": ["INV-001", "INV-001"],
+                "invoice_amount": ["3250.00", "3250.00"],
             }
         )
 
-        issues = validate_transactions(
-            dataframe,
-            config=ValidationConfig(split_payment_threshold=10000.0),
-        ).issues_dataframe()
+        issue_types = validate_transactions(dataframe).issues_dataframe()["issue_type"].tolist()
 
-        self.assertEqual(2, int(issues["issue_type"].eq("possible_split_payment").sum()))
+        self.assertEqual(2, issue_types.count("possible_duplicate_payment"))
+        self.assertNotIn("possible_split_payment", issue_types)
 
-    def test_split_payment_rule_avoids_incomplete_or_non_threshold_groups(self):
+    def test_split_payment_rule_avoids_groups_that_do_not_reconcile(self):
         cases = {
-            "different date": {
-                "transaction_date": ["2025-11-25", "2025-11-26"],
-            },
             "different invoice": {
                 "invoice_reference": ["INV-001", "INV-002"],
             },
@@ -367,24 +363,31 @@ class ValidationTests(unittest.TestCase):
             "different currency": {
                 "currency": ["GBP", "EUR"],
             },
-            "combined below threshold": {
-                "amount": ["2000.00", "2500.00"],
+            "payments below invoice total": {
+                "amount": ["4000.00", "4000.00"],
+            },
+            "payments above invoice total": {
+                "amount": ["6000.00", "5000.00"],
             },
             "non-positive component": {
-                "amount": ["-100.00", "4950.00"],
+                "amount": ["-100.00", "9975.00"],
             },
             "same transaction id": {
                 "transaction_id": ["TXN-001", "TXN-001"],
             },
+            "inconsistent invoice totals": {
+                "invoice_amount": ["9875.00", "9800.00"],
+            },
         }
         base = {
             "transaction_id": ["TXN-001", "TXN-002"],
-            "transaction_date": ["2025-11-25", "2025-11-25"],
+            "transaction_date": ["2025-11-25", "2025-12-02"],
             "account_id": ["OPS", "OPS"],
-            "amount": ["4950.00", "4925.00"],
+            "amount": ["4542.50", "5332.50"],
             "currency": ["GBP", "GBP"],
             "counterparty": ["Vendor A", "Vendor A"],
             "invoice_reference": ["INV-001", "INV-001"],
+            "invoice_amount": ["9875.00", "9875.00"],
         }
 
         for name, override in cases.items():
@@ -392,6 +395,23 @@ class ValidationTests(unittest.TestCase):
                 dataframe = pd.DataFrame({**base, **override})
                 issue_types = validate_transactions(dataframe).issues_dataframe()["issue_type"].tolist()
                 self.assertNotIn("possible_split_payment", issue_types)
+
+    def test_split_payment_rule_requires_invoice_amount(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "transaction_date": ["2025-11-25", "2025-12-02"],
+                "account_id": ["OPS", "OPS"],
+                "amount": ["4542.50", "5332.50"],
+                "currency": ["GBP", "GBP"],
+                "counterparty": ["Vendor A", "Vendor A"],
+                "invoice_reference": ["INV-001", "INV-001"],
+            }
+        )
+
+        issue_types = validate_transactions(dataframe).issues_dataframe()["issue_type"].tolist()
+
+        self.assertNotIn("possible_split_payment", issue_types)
 
     def test_population_relative_large_amount_is_not_a_validation_issue(self):
         rows = [

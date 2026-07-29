@@ -188,3 +188,21 @@ class SchemaTests(unittest.TestCase):
 
         self.assertTrue(plan.auto_schema.has_required_schema)
         self.assertEqual("invoice_no", plan.canonical_to_source["invoice_reference"])
+
+    def test_transaction_mapping_can_include_invoice_amount(self):
+        dataframe = pd.DataFrame(
+            columns=[
+                "txn_ref",
+                "date",
+                "acc_id",
+                "amt",
+                "ccy",
+                "counterparty_name",
+                "invoice_total",
+            ]
+        )
+
+        plan = build_mapping_plan(dataframe, dataset_type=DatasetType.TRANSACTIONS)
+
+        self.assertTrue(plan.auto_schema.has_required_schema)
+        self.assertEqual("invoice_total", plan.canonical_to_source["invoice_amount"])

@@ -22,6 +22,7 @@ FIELD_LABELS = {
     "currency": "Currency",
     "counterparty": "Payee or vendor",
     "invoice_reference": "Invoice or payment reference",
+    "invoice_amount": "Invoice total",
     "vendor_id": "Vendor ID",
     "vendor_name": "Vendor name",
     "beneficiary_id": "Beneficiary ID",
@@ -39,6 +40,7 @@ FIELD_HELP = {
     "currency": "Choose the currency code, such as USD, GBP, or EUR.",
     "counterparty": "Choose the person or organisation that received the payment.",
     "invoice_reference": "Choose the invoice, voucher, or payment reference when available.",
+    "invoice_amount": "Choose the total value shown on the invoice, before any partial payments.",
 }
 
 

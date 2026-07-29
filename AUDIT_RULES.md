@@ -60,7 +60,7 @@ These checks run against the transactions file.
 | Missing invoice/reference | `missing_invoice_reference` | warning | Optional invoice/reference column exists but is blank for the transaction. | Request the invoice, voucher, or payment reference and document the review outcome. |
 | Duplicate transaction ID | `duplicate_transaction_id` | error | Same transaction ID appears more than once. | Check whether rows are duplicates, corrections, or separate payments with wrong IDs. |
 | Possible duplicate payment | `possible_duplicate_payment` | warning | The same invoice reference, or the same account/payee/amount/currency within the review window, appears under different transaction IDs. The finding names the related transaction IDs and the reason for the match. | Compare the named payments and confirm both should exist. |
-| Possible split payment | `possible_split_payment` | warning | Two or more positive payments have different transaction IDs but share a nonblank invoice/reference, payee, date, and currency. Every payment is below the configured threshold; together they meet or exceed it. The default threshold is 5,000 in the transaction currency. | Compare the named payments and approval evidence to confirm whether one invoice was divided to avoid a higher approval level. |
+| Possible split payment | `possible_split_payment` | warning | Two or more positive payments have different transaction IDs but share a nonblank invoice/reference, payee, currency, and consistent invoice total. No individual payment equals the invoice total, but the payments reconcile to it when combined. Payment dates may differ. | Compare the named payments with the invoice and approval evidence, then confirm why the invoice was settled in parts. |
 | Running balance integrity | `balance_movement_mismatch` | warning | A reported balance movement does not agree with the transaction amount after the statement sign convention is inferred from at least five reliable transitions. Ambiguous statements are not guessed. | Compare the row and preceding row with the source statement and check for omitted, duplicated, or incorrectly signed entries. |
 | Payee concentration | `vendor_concentration` | warning | One payee represents at least the configured share of transaction value in a sufficiently large, varied currency population. Defaults: 40% share, at least 20 transactions, and at least 3 payees. Currencies are assessed separately. | Review procurement evidence, competitive sourcing, approvals, and the reason for the concentration. |
 
@@ -106,7 +106,7 @@ The system currently answers:
 - whether spend exceeds approved budget lines.
 - whether running balances reconcile when the statement provides enough evidence to infer its sign convention.
 - whether one payee represents a high share of transaction value within a currency population.
-- whether same-day payments for one payee and invoice may have been split around the configured review threshold.
+- whether partial payments for one payee and invoice reconcile to the invoice total.
 - which findings and transaction rows should be reviewed first using deterministic priority scores.
 - which transactions look unusual compared with the uploaded transaction population, using the separate ML/anomaly review output.
 

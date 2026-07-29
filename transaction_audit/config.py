@@ -68,6 +68,12 @@ DEFAULT_COLUMN_ALIASES = {
     "document no": "invoice_reference",
     "document_number": "invoice_reference",
     "document number": "invoice_reference",
+    "invoice_amount": "invoice_amount",
+    "invoice amount": "invoice_amount",
+    "invoice_total": "invoice_amount",
+    "invoice total": "invoice_amount",
+    "invoice_value": "invoice_amount",
+    "invoice value": "invoice_amount",
     "vendor_id": "vendor_id",
     "vendor id": "vendor_id",
     "vendor_code": "vendor_id",
@@ -218,7 +224,7 @@ BUDGET_COLUMN_ALIASES = {
 @dataclass(frozen=True)
 class ValidationConfig:
     large_amount_threshold: float = 10000.0
-    split_payment_threshold: float = 5000.0
+    invoice_amount_tolerance: float = 0.01
     allowed_currencies: tuple[str, ...] = ("GBP", "USD", "EUR")
     date_dayfirst: bool = True
     duplicate_payment_window_days: int = 2

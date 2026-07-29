@@ -93,9 +93,9 @@ ISSUE_GUIDANCE = {
         "recommended_action": "Compare the matching payments and confirm whether both should exist.",
     },
     "possible_split_payment": {
-        "finding": "Payments may have been split around an approval threshold",
-        "why_it_matters": "Related payments are individually below the review threshold but meet or exceed it when combined.",
-        "recommended_action": "Compare the related transactions and confirm whether they belong to one invoice that required higher approval.",
+        "finding": "One invoice may have been divided across payments",
+        "why_it_matters": "No individual payment settles the invoice, but the related payments match its total when combined.",
+        "recommended_action": "Compare the related payments with the invoice and approval evidence, then confirm why the invoice was settled in parts.",
     },
     "missing_invoice_reference": {
         "finding": "Invoice or reference is missing",

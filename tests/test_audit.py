@@ -184,7 +184,7 @@ class AuditTests(unittest.TestCase):
                 "Running balance does not reconcile",
                 "High concentration of transaction value with one payee",
                 "Vendor ID and payee name disagree",
-                "Payments may have been split around an approval threshold",
+                "One invoice may have been divided across payments",
             },
             set(findings["finding"]),
         )

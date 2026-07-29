@@ -33,6 +33,7 @@ DATASET_DEFINITIONS = {
             "budget_line_id",
             "account_id",
             "invoice_reference",
+            "invoice_amount",
             "budget_category",
             "description",
             "balance",

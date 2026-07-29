@@ -125,6 +125,10 @@ def render_selected_transaction_detail(
             _write_detail("Amount", _format_amount(row.get("amount", ""), row.get("currency", "")))
             _write_detail("Account", row.get("account_id", ""))
             _write_detail("Invoice / reference", row.get("invoice_reference", ""))
+            _write_detail(
+                "Invoice total",
+                _format_amount(row.get("invoice_amount", ""), row.get("currency", "")),
+            )
 
         with evidence_column:
             st.markdown("**What needs checking**")

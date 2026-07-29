@@ -45,7 +45,7 @@ ISSUE_SIGNALS = {
     "duplicate_beneficiary_reference": RiskSignal(75, "high", "Duplicate beneficiary key in reference file"),
     "duplicate_budget_reference": RiskSignal(75, "high", "Duplicate budget key in reference file"),
     "possible_duplicate_payment": RiskSignal(70, "high", "Possible duplicate payment"),
-    "possible_split_payment": RiskSignal(75, "high", "Possible split payment around the review threshold"),
+    "possible_split_payment": RiskSignal(75, "high", "Partial payments match one invoice total"),
     "large_amount": RiskSignal(65, "medium", "Payment is above the review limit"),
     "unsupported_currency": RiskSignal(60, "medium", "Currency is not in the expected list"),
     "vendor_reference_mismatch": RiskSignal(60, "medium", "Vendor ID and payee name point to different records"),

@@ -94,6 +94,7 @@ class RiskTests(unittest.TestCase):
                 "currency": ["GBP", "GBP"],
                 "counterparty": ["Vendor A", "Vendor A"],
                 "invoice_reference": ["SP-001-INV", "SP-001-INV"],
+                "invoice_amount": ["9875.00", "9875.00"],
             }
         )
         result = validate_transactions(dataframe)
