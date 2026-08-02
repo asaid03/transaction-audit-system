@@ -308,6 +308,66 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(["TXN-002", "TXN-001"], issues["related_record_id"].tolist())
         self.assertTrue(issues["message"].str.contains("INV-001", regex=False).all())
 
+    def test_flags_partial_duplicate_when_payments_exceed_invoice_total(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "transaction_date": ["2025-06-01", "2025-06-08"],
+                "account_id": ["OPS", "OPS"],
+                "amount": ["2500.00", "2480.00"],
+                "currency": ["GBP", "GBP"],
+                "counterparty": ["Vendor A", "Vendor A"],
+                "invoice_reference": ["INV-001", "INV-001"],
+                "invoice_amount": ["2500.00", "2500.00"],
+            }
+        )
+
+        issues = validate_transactions(dataframe).issues_dataframe()
+        duplicate_issues = issues[issues["issue_type"].eq("possible_duplicate_payment")]
+
+        self.assertEqual(["TXN-001", "TXN-002"], duplicate_issues["transaction_id"].tolist())
+        self.assertEqual(["TXN-002", "TXN-001"], duplicate_issues["related_record_id"].tolist())
+        self.assertTrue(duplicate_issues["message"].str.contains("4,980.00", regex=False).all())
+        self.assertTrue(duplicate_issues["message"].str.contains("invoice total", regex=False).all())
+        self.assertNotIn("possible_split_payment", issues["issue_type"].tolist())
+
+    def test_installments_below_invoice_total_are_not_duplicates_or_splits(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "transaction_date": ["2025-06-01", "2025-06-08"],
+                "account_id": ["OPS", "OPS"],
+                "amount": ["1000.00", "1200.00"],
+                "currency": ["GBP", "GBP"],
+                "counterparty": ["Vendor A", "Vendor A"],
+                "invoice_reference": ["INV-001", "INV-001"],
+                "invoice_amount": ["2500.00", "2500.00"],
+            }
+        )
+
+        issue_types = validate_transactions(dataframe).issues_dataframe()["issue_type"].tolist()
+
+        self.assertNotIn("possible_duplicate_payment", issue_types)
+        self.assertNotIn("possible_split_payment", issue_types)
+
+    def test_invoice_duplicate_rule_requires_consistent_invoice_totals(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "transaction_date": ["2025-06-01", "2025-06-08"],
+                "account_id": ["OPS", "OPS"],
+                "amount": ["2500.00", "2480.00"],
+                "currency": ["GBP", "GBP"],
+                "counterparty": ["Vendor A", "Vendor A"],
+                "invoice_reference": ["INV-001", "INV-001"],
+                "invoice_amount": ["2500.00", "2480.00"],
+            }
+        )
+
+        issue_types = validate_transactions(dataframe).issues_dataframe()["issue_type"].tolist()
+
+        self.assertNotIn("possible_duplicate_payment", issue_types)
+
     def test_flags_partial_payments_that_reconcile_to_invoice_amount(self):
         dataframe = pd.DataFrame(
             {
@@ -329,6 +389,7 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(["TXN-002", "TXN-001"], split_issues["related_record_id"].tolist())
         self.assertTrue(split_issues["message"].str.contains("9,875.00", regex=False).all())
         self.assertTrue(split_issues["message"].str.contains("invoice total", regex=False).all())
+        self.assertNotIn("possible_duplicate_payment", issues["issue_type"].tolist())
 
     def test_full_invoice_payments_are_duplicates_not_split_payments(self):
         dataframe = pd.DataFrame(

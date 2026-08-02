@@ -194,17 +194,6 @@ def check_possible_duplicate_payments(
     checked: pd.DataFrame,
     config: ValidationConfig,
 ) -> list[ValidationIssue]:
-    group_columns = ["account_id", "counterparty", "amount", "currency"]
-    required_text_columns = ["account_id", "counterparty", "currency", "transaction_id"]
-    usable = checked[
-        checked[group_columns].notna().all(axis=1)
-        & checked[required_text_columns].ne("").all(axis=1)
-        & checked["transaction_date"].notna()
-    ].copy()
-
-    if usable.empty:
-        return []
-
     matches: dict[Hashable, set[Hashable]] = {}
     match_reasons: dict[Hashable, set[str]] = {}
 
@@ -213,6 +202,41 @@ def check_possible_duplicate_payments(
         matches.setdefault(right, set()).add(left)
         match_reasons.setdefault(left, set()).add(reason)
         match_reasons.setdefault(right, set()).add(reason)
+
+    invoice_groups = _reconcilable_invoice_groups(
+        checked,
+        tolerance=float(config.invoice_amount_tolerance),
+    )
+    invoice_managed_indexes = {
+        index
+        for group, _, _ in invoice_groups
+        for index in group.index
+    }
+    for group, invoice_total, combined_amount in invoice_groups:
+        if combined_amount <= invoice_total + config.invoice_amount_tolerance:
+            continue
+
+        currency = str(group["currency"].iloc[0]).strip()
+        invoice_reference = str(group["invoice_reference"].iloc[0]).strip()
+        excess = combined_amount - invoice_total
+        reason = (
+            f"payments totalling {currency} {combined_amount:,.2f} against invoice/reference "
+            f"{invoice_reference}, exceeding its invoice total of {currency} {invoice_total:,.2f} "
+            f"by {currency} {excess:,.2f}"
+        )
+        invoice_indexes = list(group.index)
+        for offset, left_index in enumerate(invoice_indexes):
+            for right_index in invoice_indexes[offset + 1 :]:
+                add_match(left_index, right_index, reason)
+
+    group_columns = ["account_id", "counterparty", "amount", "currency"]
+    required_text_columns = ["account_id", "counterparty", "currency", "transaction_id"]
+    usable = checked[
+        checked[group_columns].notna().all(axis=1)
+        & checked[required_text_columns].ne("").all(axis=1)
+        & checked["transaction_date"].notna()
+        & ~checked.index.isin(invoice_managed_indexes)
+    ].copy()
 
     for _, group in usable.groupby(group_columns, dropna=False):
         if group["transaction_id"].nunique() < 2:
@@ -296,51 +320,15 @@ def check_possible_split_payments(
     checked: pd.DataFrame,
     config: ValidationConfig,
 ) -> list[ValidationIssue]:
-    required_columns = {
-        "transaction_id",
-        "amount",
-        "currency",
-        "counterparty",
-        "invoice_reference",
-        "invoice_amount",
-    }
-    if not required_columns.issubset(checked.columns):
-        return []
-
     tolerance = float(config.invoice_amount_tolerance)
     if tolerance < 0:
         return []
 
-    working = checked.copy()
-    for source, target in (
-        ("counterparty", "_counterparty_key"),
-        ("currency", "_currency_key"),
-        ("invoice_reference", "_invoice_key"),
-    ):
-        working[target] = (
-            working[source]
-            .astype("string")
-            .str.strip()
-            .str.lower()
-            .str.replace(r"\s+", " ", regex=True)
-        )
-
-    usable = working[
-        working["transaction_id"].notna()
-        & working["transaction_id"].astype("string").str.strip().ne("")
-        & working["_counterparty_key"].notna()
-        & working["_counterparty_key"].ne("")
-        & working["_currency_key"].notna()
-        & working["_currency_key"].ne("")
-        & working["_invoice_key"].notna()
-        & working["_invoice_key"].ne("")
-    ]
-    if len(usable) < 2:
-        return []
-
     issues = []
-    group_columns = ["_counterparty_key", "_currency_key", "_invoice_key"]
-    for _, group in usable.groupby(group_columns, dropna=False, sort=False):
+    for group, invoice_total, combined_amount in _reconcilable_invoice_groups(
+        checked,
+        tolerance=tolerance,
+    ):
         transaction_ids = sorted(
             {
                 transaction_id
@@ -352,22 +340,9 @@ def check_possible_split_payments(
             continue
 
         payment_amounts = pd.to_numeric(group["amount"], errors="coerce")
-        invoice_amounts = pd.to_numeric(group["invoice_amount"], errors="coerce")
-        if (
-            payment_amounts.isna().any()
-            or invoice_amounts.isna().any()
-            or payment_amounts.le(0).any()
-            or invoice_amounts.le(0).any()
-        ):
-            continue
-
-        invoice_total = float(invoice_amounts.iloc[0])
-        if invoice_amounts.sub(invoice_total).abs().gt(tolerance).any():
-            continue
         if payment_amounts.ge(invoice_total - tolerance).any():
             continue
 
-        combined_amount = float(payment_amounts.sum())
         if abs(combined_amount - invoice_total) > tolerance:
             continue
 
@@ -401,6 +376,71 @@ def check_possible_split_payments(
             )
 
     return issues
+
+
+def _reconcilable_invoice_groups(
+    checked: pd.DataFrame,
+    tolerance: float,
+) -> list[tuple[pd.DataFrame, float, float]]:
+    required_columns = {
+        "transaction_id",
+        "amount",
+        "currency",
+        "counterparty",
+        "invoice_reference",
+        "invoice_amount",
+    }
+    if tolerance < 0 or not required_columns.issubset(checked.columns):
+        return []
+
+    working = checked.copy()
+    for source, target in (
+        ("counterparty", "_counterparty_key"),
+        ("currency", "_currency_key"),
+        ("invoice_reference", "_invoice_key"),
+    ):
+        working[target] = (
+            working[source]
+            .astype("string")
+            .str.strip()
+            .str.lower()
+            .str.replace(r"\s+", " ", regex=True)
+        )
+
+    usable = working[
+        working["transaction_id"].notna()
+        & working["transaction_id"].astype("string").str.strip().ne("")
+        & working["_counterparty_key"].notna()
+        & working["_counterparty_key"].ne("")
+        & working["_currency_key"].notna()
+        & working["_currency_key"].ne("")
+        & working["_invoice_key"].notna()
+        & working["_invoice_key"].ne("")
+    ]
+
+    groups = []
+    group_columns = ["_counterparty_key", "_currency_key", "_invoice_key"]
+    for _, group in usable.groupby(group_columns, dropna=False, sort=False):
+        if group["transaction_id"].map(_clean_optional).dropna().nunique() < 2:
+            continue
+
+        payment_amounts = pd.to_numeric(group["amount"], errors="coerce")
+        invoice_amounts = pd.to_numeric(group["invoice_amount"], errors="coerce")
+        if (
+            payment_amounts.isna().any()
+            or invoice_amounts.isna().any()
+            or payment_amounts.le(0).any()
+            or invoice_amounts.le(0).any()
+        ):
+            continue
+
+        invoice_total = float(invoice_amounts.iloc[0])
+        if invoice_amounts.sub(invoice_total).abs().gt(tolerance).any():
+            continue
+
+        groups.append((group, invoice_total, float(payment_amounts.sum())))
+
+    return groups
 
 
 def rows_matching(dataframe: pd.DataFrame, mask: pd.Series):

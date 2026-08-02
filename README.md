@@ -34,7 +34,7 @@ Checks include:
 - invalid dates
 - unsupported currencies
 - duplicate transaction IDs
-- possible duplicate payments
+- possible duplicate payments, including cumulative payments above a shared invoice total
 - possible split payments where partial payments for the same vendor and invoice reconcile to the invoice total
 - missing invoice/reference values when an invoice/reference column is present
 - running-balance movements that do not reconcile, when a usable balance column exists

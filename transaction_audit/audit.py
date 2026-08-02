@@ -89,8 +89,8 @@ ISSUE_GUIDANCE = {
     },
     "possible_duplicate_payment": {
         "finding": "Possible duplicate payment",
-        "why_it_matters": "The payment resembles another transaction by date, amount, and payee.",
-        "recommended_action": "Compare the matching payments and confirm whether both should exist.",
+        "why_it_matters": "The payment repeats another transaction pattern or contributes to total payments above the stated invoice amount.",
+        "recommended_action": "Compare the related payments with the invoice and payment evidence, then confirm whether every payment should exist.",
     },
     "possible_split_payment": {
         "finding": "One invoice may have been divided across payments",
