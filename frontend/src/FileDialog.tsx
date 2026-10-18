@@ -158,7 +158,7 @@ export default function FileDialog({
                 ? "Preparing your review…"
                 : file
                   ? "Choose a different file"
-                  : "or choose a file · CSV / XLSX · up to 20 MB"}
+                  : "or choose a file · CSV / XLSX · up to 4 MB"}
             </span>
           </button>
           <input

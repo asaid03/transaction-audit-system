@@ -2,18 +2,16 @@ import io
 import json
 import unittest
 from importlib.util import find_spec
-from unittest.mock import patch
 
 import pandas as pd
 
 if not all(find_spec(package) for package in ("fastapi", "httpx", "multipart")):
-    raise unittest.SkipTest("Install requirements-web.txt to test the optional React API.")
+    raise unittest.SkipTest("Install requirements.txt to test the React API.")
 
 from fastapi.testclient import TestClient
 
-from transaction_audit.api import FRONTEND_DIST, app, analyse_data, demo
+from transaction_audit.api import FRONTEND_DIST, MAX_UPLOAD_BYTES, app, analyse_data, demo
 from transaction_audit.validation import validate_transactions
-from transaction_audit.serve import main as serve
 
 
 class ReviewApiTests(unittest.TestCase):
@@ -64,6 +62,14 @@ class ReviewApiTests(unittest.TestCase):
         unsupported = self.client.post("/api/inspect", files={"file": ("payments.xls", contents)})
         self.assertEqual(422, unsupported.status_code)
 
+    def test_upload_larger_than_host_limit_is_rejected(self):
+        response = self.client.post(
+            "/api/inspect",
+            files={"file": ("payments.csv", b"x" * (MAX_UPLOAD_BYTES + 1), "text/csv")},
+        )
+        self.assertEqual(413, response.status_code)
+        self.assertIn("4 MB", response.json()["detail"])
+
     def test_xlsx_upload_and_json_null_values(self):
         workbook = io.BytesIO()
         self.dataframe.assign(invoice_reference=[None, "INV-2"]).to_excel(workbook, index=False)
@@ -94,8 +100,3 @@ class ReviewApiTests(unittest.TestCase):
         self.assertEqual({"status": "ok"}, self.client.get("/api/health").json())
         self.assertEqual(404, self.client.get("/api/not-an-endpoint").status_code)
         self.assertEqual(404, self.client.get("/requirements.txt").status_code)
-
-    def test_production_entrypoint_uses_host_assigned_port(self):
-        with patch.dict("os.environ", {"PORT": "8765", "HOST": "127.0.0.1"}), patch("uvicorn.run") as run:
-            serve()
-        run.assert_called_once_with("transaction_audit.api:app", host="127.0.0.1", port=8765)

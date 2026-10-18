@@ -5,10 +5,10 @@ the existing Python audit engine. The separate Streamlit app still runs as befor
 
 ## Run locally
 
-From the repository root, install API dependencies into the existing environment:
+From the repository root, install Python dependencies into the existing environment:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-web.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m uvicorn transaction_audit.api:app --host 127.0.0.1 --port 8001
 ```
 
@@ -64,19 +64,17 @@ to localhost; the production service uses the hosting platform's assigned port.
 
 ## Deploy a shareable version
 
-The root `Dockerfile` builds React and bundles its compiled assets with the Python
-API in one service. Relative `/api` requests work on the same public domain, with
-no separate frontend hosting or CORS configuration required.
+The project deploys to Vercel as a static React build backed by one FastAPI Python
+Function. Relative `/api` requests stay on the same public domain, so no separate
+backend service or CORS configuration is required.
 
-On Railway:
+On Vercel:
 
-1. Publish the `review-ui` branch containing this work to GitHub.
-2. Create a service from `asaid03/transaction-audit-system`, using `review-ui`.
-3. Keep the service root at the repository root, where `Dockerfile` and
-   `railway.json` live. Railway uses the Docker build and `/api/health` check.
-4. Generate a domain in the service's Networking settings to get the shareable
-   HTTPS link. Use the port supplied by Railway; the server reads `PORT`.
-5. Leave Serverless disabled when you want the demonstration to remain running.
+1. Import `asaid03/transaction-audit-system` from GitHub and select `review-ui`.
+2. Keep the project root at the repository root. `vercel.json` builds the React
+   application and `api/index.py` exposes the existing FastAPI application.
+3. Select the free Hobby plan and deploy. No environment variables are required.
+4. Use the generated `*.vercel.app` domain as the shareable demonstration link.
 
 The app runs in the cloud independently of your computer. It opens the committed
 synthetic sample and accepts transaction uploads. Uploaded data is processed on
@@ -85,16 +83,17 @@ remain in browser memory and are lost on refresh unless exported.
 
 This deployment has no sign-in. A public domain is suitable for synthetic-data
 demonstrations; access control is a separate step before private client use.
+Uploads are limited to 4 MB because Vercel Functions cap request bodies at 4.5 MB.
 
-To check the combined production service locally after `npm run build`:
+To check the combined service locally after `npm run build`:
 
 ```powershell
-# From the repository root; defaults to port 8000.
-.\.venv\Scripts\python.exe -m transaction_audit.serve
+# From the repository root.
+.\.venv\Scripts\python.exe -m uvicorn transaction_audit.api:app --host 127.0.0.1 --port 8000
 ```
 
 Open http://localhost:8000. This uses built React assets directly from FastAPI,
-without the Vite development server. Docker is optional for this local check.
+without the Vite development server.
 
 ## Verify
 

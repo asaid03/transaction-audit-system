@@ -24,7 +24,7 @@ from transaction_audit.datasets import DatasetType
 
 
 app = FastAPI(title="Transaction Audit Review", version="0.1.0")
-MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+MAX_UPLOAD_BYTES = 4_000_000
 DEMO_PATH = Path(__file__).resolve().parent.parent / "sample_data" / "reduced_transactions_200_with_anomalies.csv"
 FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
@@ -115,7 +115,7 @@ async def _load_upload(file: UploadFile) -> pd.DataFrame:
         raise HTTPException(422, "Choose a CSV or .xlsx file.")
     content = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(413, "This demonstration accepts files up to 20 MB.")
+        raise HTTPException(413, "This demonstration accepts files up to 4 MB.")
     if not content:
         raise HTTPException(422, "The file is empty.")
     try:

@@ -5,7 +5,7 @@ Python and Streamlit prototype for testing financial transaction files, reconcil
 The new React investigation workspace is available alongside Streamlit. It provides
 a review queue, linked payment evidence, separate audit/model scores, and reversible
 session review decisions. See [frontend/README.md](frontend/README.md) for local setup,
-the API contract, Railway deployment, and the scope of this first design slice.
+the API contract, Vercel deployment, and the scope of this first design slice.
 
 ## What It Does
 
@@ -120,9 +120,10 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Run the Streamlit app:
+For the legacy Streamlit interface, install its optional dependency and run it:
 
 ```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-streamlit.txt
 .\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "fastapi",
+  "buildCommand": "npm --prefix frontend ci --no-audit --no-fund && npm --prefix frontend run build",
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "{frontend/dist/**,sample_data/reduced_transactions_200_with_anomalies.csv}",
+      "excludeFiles": "{tests/**,frontend/node_modules/**,frontend/tests/**,frontend/test-results/**,sample_data/*.xlsx}"
+    }
+  }
+}
