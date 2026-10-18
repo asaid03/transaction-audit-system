@@ -308,6 +308,59 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(["TXN-002", "TXN-001"], issues["related_record_id"].tolist())
         self.assertTrue(issues["message"].str.contains("INV-001", regex=False).all())
 
+    def test_invoice_reference_normalisation_finds_format_variants(self):
+        cases = {
+            "punctuation": ("INV-001245", "INV001245"),
+            "spacing and case": ("INV-008721", "inv 008721"),
+            "leading zeros": ("INV-004582", "INV-4582"),
+            "numbered segments": ("INV0002-2025-10084", "INV2-2025-10084"),
+        }
+
+        for name, references in cases.items():
+            with self.subTest(name=name):
+                dataframe = pd.DataFrame(
+                    {
+                        "transaction_id": ["TXN-001", "TXN-002"],
+                        "transaction_date": ["2025-06-01", "2025-08-01"],
+                        "account_id": ["OPS", "OPS"],
+                        "amount": ["2500.00", "2500.00"],
+                        "currency": ["GBP", "GBP"],
+                        "counterparty": ["Vendor A", "Vendor A"],
+                        "invoice_reference": references,
+                        "invoice_amount": ["2500.00", "2500.00"],
+                    }
+                )
+
+                issues = validate_transactions(dataframe).issues_dataframe()
+                duplicate_issues = issues[issues["issue_type"].eq("possible_duplicate_payment")]
+
+                self.assertEqual(["TXN-001", "TXN-002"], duplicate_issues["transaction_id"].tolist())
+                self.assertEqual(["TXN-002", "TXN-001"], duplicate_issues["related_record_id"].tolist())
+                self.assertTrue(
+                    duplicate_issues["message"].str.contains(
+                        "after normalising punctuation, spacing, case and leading zeros",
+                        regex=False,
+                    ).all()
+                )
+
+    def test_invoice_reference_normalisation_keeps_different_references_separate(self):
+        dataframe = pd.DataFrame(
+            {
+                "transaction_id": ["TXN-001", "TXN-002"],
+                "transaction_date": ["2025-06-01", "2025-08-01"],
+                "account_id": ["OPS", "OPS"],
+                "amount": ["2500.00", "2500.00"],
+                "currency": ["GBP", "GBP"],
+                "counterparty": ["Vendor A", "Vendor A"],
+                "invoice_reference": ["INV-001245", "INV-001246"],
+                "invoice_amount": ["2500.00", "2500.00"],
+            }
+        )
+
+        issue_types = validate_transactions(dataframe).issues_dataframe()["issue_type"].tolist()
+
+        self.assertNotIn("possible_duplicate_payment", issue_types)
+
     def test_flags_partial_duplicate_when_payments_exceed_invoice_total(self):
         dataframe = pd.DataFrame(
             {

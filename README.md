@@ -2,6 +2,11 @@
 
 Python and Streamlit prototype for testing financial transaction files, reconciling reference data, and producing reviewer-friendly audit outputs.
 
+The new React investigation workspace is available alongside Streamlit. It provides
+a review queue, linked payment evidence, separate audit/model scores, and reversible
+session review decisions. See [frontend/README.md](frontend/README.md) for local setup,
+the API contract, Railway deployment, and the scope of this first design slice.
+
 ## What It Does
 
 - Loads transaction files from CSV or Excel.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Hashable
 
 import pandas as pd
@@ -217,10 +218,10 @@ def check_possible_duplicate_payments(
             continue
 
         currency = str(group["currency"].iloc[0]).strip()
-        invoice_reference = str(group["invoice_reference"].iloc[0]).strip()
+        invoice_reference = _invoice_reference_description(group)
         excess = combined_amount - invoice_total
         reason = (
-            f"payments totalling {currency} {combined_amount:,.2f} against invoice/reference "
+            f"payments totalling {currency} {combined_amount:,.2f} against "
             f"{invoice_reference}, exceeding its invoice total of {currency} {invoice_total:,.2f} "
             f"by {currency} {excess:,.2f}"
         )
@@ -244,7 +245,7 @@ def check_possible_duplicate_payments(
 
         if "invoice_reference" in group:
             invoice_group_candidates = group.assign(
-                _invoice_reference=group["invoice_reference"].astype("string").str.strip()
+                _invoice_reference=group["invoice_reference"].map(_invoice_match_key)
             )
             invoice_group_candidates = invoice_group_candidates[
                 invoice_group_candidates["_invoice_reference"].notna()
@@ -253,13 +254,13 @@ def check_possible_duplicate_payments(
             for _, invoice_group in invoice_group_candidates.groupby("_invoice_reference", dropna=False):
                 if invoice_group["transaction_id"].nunique() >= 2 and len(invoice_group) > 1:
                     invoice_indexes = list(invoice_group.index)
-                    invoice_reference = str(invoice_group["_invoice_reference"].iloc[0])
+                    invoice_reference = _invoice_reference_description(invoice_group)
                     for offset, left_index in enumerate(invoice_indexes):
                         for right_index in invoice_indexes[offset + 1 :]:
                             add_match(
                                 left_index,
                                 right_index,
-                                f"the same invoice/reference ({invoice_reference})",
+                                f"{invoice_reference}",
                             )
 
         ordered = group.sort_values("transaction_date")
@@ -347,7 +348,7 @@ def check_possible_split_payments(
             continue
 
         currency = str(group["currency"].iloc[0]).strip()
-        invoice_reference = str(group["invoice_reference"].iloc[0]).strip()
+        invoice_reference = _invoice_reference_description(group)
         for index, row in group.to_dict("index").items():
             transaction_id = _clean_optional(row["transaction_id"])
             related_ids = ", ".join(
@@ -365,8 +366,8 @@ def check_possible_split_payments(
                     issue_type="possible_split_payment",
                     severity="warning",
                     message=(
-                        f"This payment and transaction(s) {related_ids} share invoice/reference "
-                        f"{invoice_reference}, payee and currency. Their combined payments of "
+                        f"This payment and transaction(s) {related_ids} share {invoice_reference}, "
+                        f"payee and currency. Their combined payments of "
                         f"{currency} {combined_amount:,.2f} match the invoice total of "
                         f"{currency} {invoice_total:,.2f}, while no individual payment settles "
                         "the full invoice."
@@ -397,7 +398,6 @@ def _reconcilable_invoice_groups(
     for source, target in (
         ("counterparty", "_counterparty_key"),
         ("currency", "_currency_key"),
-        ("invoice_reference", "_invoice_key"),
     ):
         working[target] = (
             working[source]
@@ -406,6 +406,7 @@ def _reconcilable_invoice_groups(
             .str.lower()
             .str.replace(r"\s+", " ", regex=True)
         )
+    working["_invoice_key"] = working["invoice_reference"].map(_invoice_match_key)
 
     usable = working[
         working["transaction_id"].notna()
@@ -450,6 +451,37 @@ def rows_matching(dataframe: pd.DataFrame, mask: pd.Series):
 
     for position, row in zip(positions, records):
         yield position, row
+
+
+def _invoice_match_key(value: object) -> str | None:
+    """Return a comparison key without changing the invoice reference shown to users."""
+    invoice_reference = _clean_optional(value)
+    if invoice_reference is None:
+        return None
+
+    parts = re.findall(r"[A-Z]+|\d+", invoice_reference.upper())
+    if not parts:
+        return None
+
+    return "".join(part if part.isalpha() else str(int(part)) for part in parts)
+
+
+def _invoice_reference_description(group: pd.DataFrame) -> str:
+    references = sorted(
+        {
+            reference
+            for reference in group["invoice_reference"].map(_clean_optional)
+            if reference is not None
+        }
+    )
+    if len(references) == 1:
+        return f"invoice/reference {references[0]}"
+
+    joined_references = " and ".join(references)
+    return (
+        f"equivalent invoice/reference values {joined_references} "
+        "after normalising punctuation, spacing, case and leading zeros"
+    )
 
 
 def make_issue(
