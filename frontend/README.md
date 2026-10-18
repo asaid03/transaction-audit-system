@@ -72,7 +72,8 @@ On Vercel:
 
 1. Import `asaid03/transaction-audit-system` from GitHub and select `review-ui`.
 2. Keep the project root at the repository root. `vercel.json` builds the React
-   application and `api/index.py` exposes the existing FastAPI application.
+   application, `requirements.txt` supplies Python dependencies, and
+   `api/index.py` exposes the existing FastAPI application.
 3. Select the free Hobby plan and deploy. No environment variables are required.
 4. Use the generated `*.vercel.app` domain as the shareable demonstration link.
 
