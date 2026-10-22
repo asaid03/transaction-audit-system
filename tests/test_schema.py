@@ -4,10 +4,37 @@ import pandas as pd
 
 from transaction_audit.datasets import DatasetType
 from transaction_audit.schema import apply_schema, normalize_column_key, source_mapping_from_canonical
-from transaction_audit.workflow import aliases_for_dataset, allowed_mapping_columns, build_mapping_plan, required_mapping_columns
+from transaction_audit.workflow import (
+    aliases_for_dataset,
+    allowed_mapping_columns,
+    build_mapping_plan,
+    required_mapping_columns,
+    suggested_mapping_columns,
+)
 
 
 class SchemaTests(unittest.TestCase):
+    def test_mapping_suggestions_exclude_unrelated_columns(self):
+        dataframe = pd.DataFrame(
+            columns=[
+                "Payment Ref",
+                "Posting Date",
+                "Ledger Code",
+                "Payment Amount",
+                "Currency Code",
+                "Payee",
+                "Invoice Amount",
+            ]
+        )
+
+        suggestions = suggested_mapping_columns(dataframe)
+
+        self.assertEqual(["Currency Code"], suggestions["currency"])
+        self.assertNotIn("Posting Date", suggestions["currency"])
+        self.assertEqual(["Payment Amount"], suggestions["amount"])
+        self.assertNotIn("Invoice Amount", suggestions["amount"])
+        self.assertEqual(["Payee"], suggestions["counterparty"])
+
     def test_infers_common_aliases(self):
         dataframe = pd.DataFrame(
             columns=["txn_ref", "date", "acc_id", "amt", "ccy", "counterparty_name"]

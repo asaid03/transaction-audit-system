@@ -1604,10 +1604,26 @@ details > summary {
 .mapping-heading {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 12px;
   font-size: 10px;
-  color: var(--positive);
   margin: 18px 0;
+}
+.mapping-heading > span,
+.mapping-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mapping-heading > span {
+  color: var(--positive);
+}
+.mapping-toggle {
+  color: var(--secondary);
+  cursor: pointer;
+}
+.mapping-toggle input {
+  accent-color: var(--accent);
 }
 .mapping-grid {
   display: grid;

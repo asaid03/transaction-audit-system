@@ -48,6 +48,10 @@ class ReviewApiTests(unittest.TestCase):
         inspected = self.client.post("/api/inspect", files={"file": ("payments.csv", contents, "text/csv")})
         self.assertEqual(200, inspected.status_code)
         self.assertIn("counterparty", inspected.json()["missing_required"])
+        self.assertNotIn(
+            "transaction_date",
+            inspected.json()["suggested_columns"]["currency"],
+        )
 
         mapping = {**self.mapping, "counterparty": "Paid to"}
         response = self.client.post("/api/analyse", files={"file": ("payments.csv", contents, "text/csv")}, data={"mapping": json.dumps(mapping)})

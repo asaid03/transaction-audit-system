@@ -19,7 +19,12 @@ from transaction_audit.config import ValidationConfig
 from transaction_audit.ingestion import load_transactions
 from transaction_audit.risk import score_transactions
 from transaction_audit.validation import validate_transactions
-from transaction_audit.workflow import allowed_mapping_columns, apply_mapping_plan, build_mapping_plan
+from transaction_audit.workflow import (
+    allowed_mapping_columns,
+    apply_mapping_plan,
+    build_mapping_plan,
+    suggested_mapping_columns,
+)
 from transaction_audit.datasets import DatasetType
 
 
@@ -41,6 +46,7 @@ def inspect_data(dataframe: pd.DataFrame, filename: str) -> dict:
         "row_count": len(cleaned),
         "columns": list(cleaned.columns),
         "fields": list(allowed_mapping_columns(DatasetType.TRANSACTIONS)),
+        "suggested_columns": suggested_mapping_columns(cleaned),
         "mapping": plan.canonical_to_source,
         "missing_required": plan.auto_schema.missing_required,
         "sample": _records(cleaned.head(3)),

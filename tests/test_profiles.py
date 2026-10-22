@@ -31,7 +31,7 @@ VALID_VENDOR_MAPPING = {
 class ProfileTests(unittest.TestCase):
     def test_default_profiles_dir_is_project_root_relative(self):
         self.assertEqual("import_profiles", DEFAULT_PROFILES_DIR.name)
-        self.assertEqual("transaction-audit-system", DEFAULT_PROFILES_DIR.parent.name)
+        self.assertEqual(Path(__file__).resolve().parents[1], DEFAULT_PROFILES_DIR.parent)
 
     def test_save_and_load_profile(self):
         with tempfile.TemporaryDirectory() as directory:

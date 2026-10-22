@@ -143,6 +143,21 @@ test("upload and manual mapping use the real analysis endpoint", async ({
     );
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByText("200 source rows")).toBeVisible();
+  await expect(
+    dialog
+      .getByLabel("Currency")
+      .getByRole("option", { name: "is_anomaly", exact: true }),
+  ).toHaveCount(0);
+  const showAllColumns = dialog.getByLabel("Show all source columns");
+  await showAllColumns.click();
+  await expect(showAllColumns).toBeChecked();
+  await expect(
+    dialog
+      .getByLabel("Currency")
+      .getByRole("option", { name: "is_anomaly", exact: true }),
+  ).toHaveCount(1);
+  await showAllColumns.click();
+  await expect(showAllColumns).not.toBeChecked();
   await dialog.getByLabel("Payee", { exact: true }).selectOption("description");
   await dialog
     .getByText("Invoice and optional columns", { exact: true })

@@ -53,6 +53,7 @@ export interface FileInspection {
   row_count: number;
   columns: string[];
   fields: string[];
+  suggested_columns: Record<string, string[]>;
   mapping: Record<string, string>;
   missing_required: string[];
   sample: Record<string, Value>[];

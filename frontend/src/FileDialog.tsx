@@ -40,6 +40,7 @@ export default function FileDialog({
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [showAllColumns, setShowAllColumns] = useState(false);
   const required = [
     "transaction_id",
     "transaction_date",
@@ -60,11 +61,21 @@ export default function FileDialog({
     );
   }
 
+  function optionsFor(field: string) {
+    if (!inspection) return [];
+    const selected = mapping[field];
+    const candidates = showAllColumns
+      ? inspection.columns
+      : (inspection.suggested_columns[field] ?? []);
+    return [...new Set([...(selected ? [selected] : []), ...candidates])];
+  }
+
   async function inspect(file: File) {
     setFile(file);
     setBusy("Reading file");
     setError("");
     setInspection(null);
+    setShowAllColumns(false);
     try {
       const data = new FormData();
       data.append("file", file);
@@ -175,8 +186,20 @@ export default function FileDialog({
           {inspection && (
             <div className="mapping-area">
               <div className="mapping-heading">
-                <Check size={15} />
-                <span>{inspection.row_count.toLocaleString()} source rows</span>
+                <span>
+                  <Check size={15} />
+                  {inspection.row_count.toLocaleString()} source rows
+                </span>
+                <label className="mapping-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showAllColumns}
+                    onChange={(event) =>
+                      setShowAllColumns(event.target.checked)
+                    }
+                  />
+                  Show all source columns
+                </label>
               </div>
               <div className="mapping-grid">
                 {required.map((field) => (
@@ -190,9 +213,12 @@ export default function FileDialog({
                       }
                     >
                       <option value="">Choose column</option>
-                      {inspection.columns.map((column) => (
+                      {optionsFor(field).map((column) => (
                         <option key={column}>{column}</option>
                       ))}
+                      {!showAllColumns && optionsFor(field).length === 0 && (
+                        <option disabled>No likely columns found</option>
+                      )}
                     </select>
                   </label>
                 ))}
@@ -213,9 +239,13 @@ export default function FileDialog({
                           }
                         >
                           <option value="">Not included</option>
-                          {inspection.columns.map((column) => (
+                          {optionsFor(field).map((column) => (
                             <option key={column}>{column}</option>
                           ))}
+                          {!showAllColumns &&
+                            optionsFor(field).length === 0 && (
+                              <option disabled>No likely columns found</option>
+                            )}
                         </select>
                       </label>
                     ))}
