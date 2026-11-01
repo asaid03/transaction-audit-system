@@ -51,7 +51,8 @@ _FIELD_HEADER_TERMS: dict[str, tuple[str, ...]] = {
 _FIELD_HEADER_EXCLUSIONS: dict[str, tuple[str, ...]] = {
     "transaction_id": ("invoice", "document", "vendor", "supplier", "beneficiary", "account"),
     "transaction_date": ("invoice", "due", "created"),
-    "amount": ("invoice", "balance", "budget", "approved", "expected", "entitlement"),
+    "amount": ("invoice", "balance", "budget", "approved", "expected", "entitlement", "credit note", "vendor", "supplier"),
+    "counterparty": ("id", "code", "amount", "average", "median", "typical", "risk", "country", "category", "status", "invoice"),
 }
 
 
@@ -153,17 +154,20 @@ def suggested_mapping_columns(
     suggestions: dict[str, list[str]] = {field: [] for field in fields}
 
     for source in map(str, dataframe.columns):
-        header = normalize_column_key(source)
-        exact_field = aliases.get(header)
+        normalized = normalize_column_key(source)
+        header = normalized.replace("_", " ")
+        exact_field = aliases.get(normalized)
         if exact_field in suggestions:
             suggestions[exact_field].append(source)
 
         for field in fields:
             if source in suggestions[field]:
                 continue
+            if exact_field in suggestions:
+                continue
             terms = _FIELD_HEADER_TERMS.get(field, (field.replace("_", " "),))
             exclusions = _FIELD_HEADER_EXCLUSIONS.get(field, ())
-            if any(exclusion in header for exclusion in exclusions):
+            if any(f" {exclusion} " in f" {header} " for exclusion in exclusions):
                 continue
             if any(term in header for term in terms):
                 suggestions[field].append(source)

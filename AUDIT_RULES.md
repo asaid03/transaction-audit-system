@@ -1,6 +1,6 @@
 # Audit Rules and Risk Levels
 
-Last updated: 2026-07-15
+Last updated: 2026-11-01
 
 This file lists the checks currently implemented by the audit engine. It is meant to make the review scope clear for developers, testers, and non-technical reviewers.
 
@@ -63,6 +63,13 @@ These checks run against the transactions file.
 | Possible split payment | `possible_split_payment` | warning | Two or more positive payments have different transaction IDs but share a nonblank invoice/reference, payee, currency, and consistent invoice total. No individual payment equals the invoice total, but the payments reconcile to it when combined. Payment dates may differ. | Compare the named payments with the invoice and approval evidence, then confirm why the invoice was settled in parts. |
 | Running balance integrity | `balance_movement_mismatch` | warning | A reported balance movement does not agree with the transaction amount after the statement sign convention is inferred from at least five reliable transitions. Ambiguous statements are not guessed. | Compare the row and preceding row with the source statement and check for omitted, duplicated, or incorrectly signed entries. |
 | Payee concentration | `vendor_concentration` | warning | One payee represents at least the configured share of transaction value in a sufficiently large, varied currency population. Defaults: 40% share, at least 20 transactions, and at least 3 payees. Currencies are assessed separately. | Review procurement evidence, competitive sourcing, approvals, and the reason for the concentration. |
+
+Duplicate and split-payment grouping prefers a nonblank `vendor_id` (trimmed,
+with case and punctuation preserved). Rows without an ID fall back to payee names
+normalised for case and whitespace. Different IDs are kept separate, and a row
+without an ID is not linked to an identified vendor by name alone. Currency and
+the existing invoice/account conditions still apply. This grouping uses supplied
+identity data; it does not independently verify the vendor.
 
 ## Multi-File Reconciliation Rules
 

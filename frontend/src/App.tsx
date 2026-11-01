@@ -28,7 +28,7 @@ import {
 import CasePanel from "./CasePanel";
 import FileDialog from "./FileDialog";
 import { Queue, type SortKey } from "./Queue";
-import { date, exportCsv, money, statusLabels, text } from "./format";
+import { date, exportCsv, statusLabels, text } from "./format";
 import type {
   AuditRun,
   Band,

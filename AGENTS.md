@@ -24,7 +24,7 @@ Use `README.md` for the current product scope and `AUDIT_RULES.md` for the curre
 ## Simplicity First
 
 - Do not add speculative abstractions.
-- Do not introduce a rule registry, another ML model, a database, or a React frontend unless explicitly planned.
+- Do not introduce a rule registry, another ML model, a database, or another frontend framework unless explicitly planned.
 - Keep deterministic, explainable rules ahead of AI/ML scoring.
 - Keep near-term ML transaction-focused unless the user explicitly reopens employee or chart-of-account support.
 - Keep ML/anomaly output explainable and separate from deterministic validation, reconciliation, and review-priority scoring. `scikit-learn` Isolation Forest is currently a supporting signal, not the source of fraud conclusions.
@@ -41,7 +41,7 @@ Use `README.md` for the current product scope and `AUDIT_RULES.md` for the curre
 
 ## Architecture Rules
 
-- Streamlit is a UI adapter only.
+- React (`frontend/`) and FastAPI (`transaction_audit/api.py`) are UI and HTTP adapters only.
 - Core logic belongs in `transaction_audit/`.
 - Validation and reconciliation should be pure Python dataframe logic.
 - Prefer functions that accept dataframes and return structured results.
@@ -61,10 +61,12 @@ For non-trivial changes:
 .\.venv\Scripts\python.exe -B -m pytest -q
 ```
 
-3. For app-level changes, verify import:
+3. For app-level changes, verify the API import and frontend build. For UI behavior changes, run the browser tests with both local servers running (see `frontend/README.md`):
 
 ```powershell
-.\.venv\Scripts\python.exe -c "import app; print('app import ok')"
+.\.venv\Scripts\python.exe -c "from transaction_audit.api import app; print('API import ok')"
+npm --prefix frontend run build
+npm --prefix frontend test
 ```
 
 4. For Phase 2 reconciliation changes, run the sample CLI:

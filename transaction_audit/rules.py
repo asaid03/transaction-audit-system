@@ -230,8 +230,9 @@ def check_possible_duplicate_payments(
             for right_index in invoice_indexes[offset + 1 :]:
                 add_match(left_index, right_index, reason)
 
-    group_columns = ["account_id", "counterparty", "amount", "currency"]
-    required_text_columns = ["account_id", "counterparty", "currency", "transaction_id"]
+    checked = checked.assign(_payee_key=_payee_match_keys(checked))
+    group_columns = ["account_id", "_payee_key", "amount", "currency"]
+    required_text_columns = ["account_id", "_payee_key", "currency", "transaction_id"]
     usable = checked[
         checked[group_columns].notna().all(axis=1)
         & checked[required_text_columns].ne("").all(axis=1)
@@ -406,6 +407,7 @@ def _reconcilable_invoice_groups(
             .str.lower()
             .str.replace(r"\s+", " ", regex=True)
         )
+    working["_counterparty_key"] = _payee_match_keys(checked)
     working["_invoice_key"] = working["invoice_reference"].map(_invoice_match_key)
 
     usable = working[
@@ -442,6 +444,18 @@ def _reconcilable_invoice_groups(
         groups.append((group, invoice_total, float(payment_amounts.sum())))
 
     return groups
+
+
+def _payee_match_keys(checked: pd.DataFrame) -> pd.Series:
+    """Prefer explicit vendor identity; never bridge missing IDs to known IDs by name."""
+    names = checked["counterparty"].astype("string").str.strip().str.lower()
+    names = names.str.replace(r"\s+", " ", regex=True).replace("", pd.NA)
+    keys = "name:" + names
+    if "vendor_id" in checked:
+        # Preserve case and punctuation in identifiers to avoid merging distinct IDs.
+        ids = checked["vendor_id"].astype("string").str.strip().replace("", pd.NA)
+        keys = keys.where(ids.isna(), "id:" + ids)
+    return keys
 
 
 def rows_matching(dataframe: pd.DataFrame, mask: pd.Series):

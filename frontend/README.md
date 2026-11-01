@@ -1,7 +1,7 @@
 # Investigation Workspace
 
-The first React design slice: a working investigation queue and case panel using
-the existing Python audit engine. The separate Streamlit app still runs as before.
+The React investigation queue and case panel use the Python audit engine through
+the FastAPI service.
 
 ## Run locally
 
@@ -70,7 +70,7 @@ backend service or CORS configuration is required.
 
 On Vercel:
 
-1. Import `asaid03/transaction-audit-system` from GitHub and select `review-ui`.
+1. Import `asaid03/transaction-audit-system` from GitHub and select `main`.
 2. Keep the project root at the repository root. `vercel.json` builds the React
    application, `requirements.txt` supplies Python dependencies, and
    `api/index.py` exposes the existing FastAPI application.

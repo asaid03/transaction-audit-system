@@ -1,17 +1,20 @@
 # Transaction Audit System
 
-Python and Streamlit prototype for testing financial transaction files, reconciling reference data, and producing reviewer-friendly audit outputs.
+React investigation workspace backed by a FastAPI service and a pure-Python audit engine.
 
-The new React investigation workspace is available alongside Streamlit. It provides
-a review queue, linked payment evidence, separate audit/model scores, and reversible
-session review decisions. See [frontend/README.md](frontend/README.md) for local setup,
-the API contract, Vercel deployment, and the scope of this first design slice.
+The web app supports transaction uploads, column mapping, a review queue, linked
+payment evidence, separate audit/model scores, and reversible session decisions.
+See [frontend/README.md](frontend/README.md) for setup and deployment.
+
+Multi-file reconciliation, import profiles, and audit workbook generation remain
+available in the Python engine and CLI; they are not yet exposed in the web app.
 
 ## What It Does
 
 - Loads transaction files from CSV or Excel.
 - Preserves raw values during ingestion so validation can report parsing issues clearly.
 - Auto-detects common column names and supports manual schema mapping.
+- Recognises vendor/supplier name columns as payees and keeps vendor metadata and credit-note amounts out of unrelated mapping suggestions.
 - Applies conservative cleanup for bank-style transaction exports, including narration-based counterparty extraction.
 - Saves dataset-scoped import profiles for repeat file formats.
 - Runs single-file transaction validation checks.
@@ -20,7 +23,7 @@ the API contract, Vercel deployment, and the scope of this first design slice.
 - Suggests possible vendor matches when exact vendor matching fails but a high-confidence fuzzy name match exists.
 - Adds deterministic review-priority scores, bands, and drivers for exception review.
 - Adds a separate transaction-level ML/anomaly review output whose score comes from `scikit-learn` Isolation Forest rather than deterministic audit findings.
-- Shows a review-first UI with run status, priority summary, audit workbook export, and filterable review queues.
+- Shows a review queue with evidence, filters, session decisions, and CSV export.
 - Records skipped checks when optional reference files are missing.
 - Produces reviewer-friendly audit workbooks with findings, risk levels, recommended actions, and raw evidence.
 
@@ -93,16 +96,6 @@ The multi-file audit workbook includes:
 
 Start with `review_findings`. It is the human-facing sheet with review-priority score, band, drivers, review status, finding explanation, recommended action, and evidence. Use `transaction_review` when you want a row-level priority queue, including rows with no technical issue. Use `ml_anomalies` for population-relative anomaly review, not as a fraud conclusion.
 
-## App Layout
-
-The Streamlit prototype is intentionally review-first:
-
-- upload and mapping appear only when needed
-- run status and key counts appear before detailed tables
-- reviewers select a finding row to see payment details, evidence, related records, and the recommended next step
-- audit checks and unusual-pattern ML review remain separate views
-- raw input data, schema mappings, cleaning details, skipped checks, and CSV downloads sit behind evidence/detail panels
-
 ## Rules Reference
 
 See [AUDIT_RULES.md](AUDIT_RULES.md) for the current rule list, risk levels, issue types, reviewer actions, skipped checks, and planned next rules.
@@ -120,12 +113,16 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-For the legacy Streamlit interface, install its optional dependency and run it:
+Build the frontend, then start the combined React/API service:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-streamlit.txt
-.\.venv\Scripts\python.exe -m streamlit run app.py
+npm --prefix frontend ci
+npm --prefix frontend run build
+.\run_app.ps1
 ```
+
+Open http://127.0.0.1:8000. For frontend development with live reload, use the
+[two-server setup](frontend/README.md#run-locally).
 
 Run tests:
 
@@ -145,7 +142,7 @@ Run the Phase 2 sample CLI:
 
 ## Design Principles
 
-- Keep Streamlit as a UI adapter.
+- Keep React and FastAPI as UI and HTTP adapters.
 - Keep validation and reconciliation as pure Python dataframe logic.
 - Prefer deterministic, explainable rules before ML or AI.
 - Avoid silently dropping bad data; return audit issues or skipped checks.
