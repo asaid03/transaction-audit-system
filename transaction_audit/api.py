@@ -16,6 +16,7 @@ from transaction_audit.anomaly import score_transaction_anomalies
 from transaction_audit.audit import review_findings_dataframe
 from transaction_audit.bundle_workflow import maybe_clean_transactions
 from transaction_audit.config import ValidationConfig
+from transaction_audit.cases import build_review_cases
 from transaction_audit.ingestion import load_transactions
 from transaction_audit.risk import score_transactions
 from transaction_audit.validation import validate_transactions
@@ -108,6 +109,11 @@ def analyse_data(dataframe: pd.DataFrame, filename: str, mapping: dict[str, str 
         "cleaning": cleaning.transformations if cleaning else [],
         "large_payment_limit": config.large_amount_threshold,
         "cases": cases,
+        "review_cases": build_review_cases(
+            transactions,
+            [finding for finding in findings if finding["row_number"] in (None, "")],
+            invoice_tolerance=config.invoice_amount_tolerance,
+        ),
         "transactions": transactions,
         "finding_count": len(findings),
         "unlinked_findings": [finding for finding in findings if finding["row_number"] in (None, "")],

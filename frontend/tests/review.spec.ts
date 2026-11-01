@@ -1,138 +1,263 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import AxeBuilder from "@axe-core/playwright";
+
+const csv = `transaction_id,transaction_date,account_id,counterparty,currency,amount,invoice_reference,invoice_amount,vendor_id
+PAY-A,2025-06-01,AP,Supplier A,GBP,2500,INV-004582,2500,V1
+PAY-B,2025-06-08,AP,Supplier A,GBP,2480,inv 4582,2500,V1
+PAY-C,2025-06-09,AP,Supplier B,GBP,12000,INV-2,12000,V2
+PAY-D,2025-06-10,AP,Supplier C,USD,7000,,7000,V3`;
+
+async function uploadCaseFile(page: Page, contents = csv, rowCount = 4) {
+  await page.getByRole("button", { name: "New review", exact: true }).click();
+  await page.getByLabel("Transaction file", { exact: true }).setInputFiles({
+    name: "case-fixture.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(contents),
+  });
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText(`${rowCount} source rows`)).toBeVisible();
+  await dialog.getByRole("button", { name: "Start review" }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(
+    page.getByText("case-fixture.csv", { exact: true }),
+  ).toBeVisible();
+}
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("table", { name: "Transactions needing review" }),
+    page.getByRole("region", { name: "Review cases", exact: true }),
   ).toBeVisible({ timeout: 20000 });
 });
 
-test("real engine results, filters, linked evidence, decisions, undo, export", async ({
+test("desktop queue balances columns and uses readable compact rows", async ({
   page,
 }) => {
-  const errors: string[] = [];
-  page.on("pageerror", (error) => errors.push(error.message));
-  await expect(
-    page.getByText("200 transactions", { exact: true }).first(),
-  ).toBeVisible();
-  await page.screenshot({
-    path: "test-results/review-desktop.png",
-    fullPage: true,
-  });
-  const firstCase = page.getByRole("button", { name: /^Investigate / }).first();
-  const transaction = (await firstCase.getAttribute("aria-label"))!.replace(
-    "Investigate ",
-    "",
-  );
-  await firstCase.click();
-  const dialog = page.getByRole("dialog");
-  await expect(
-    dialog.getByRole("heading", { name: "Why this needs review" }),
-  ).toBeVisible();
-  await expect(
-    dialog.getByRole("heading", { name: "Linked payments" }),
-  ).toBeVisible();
-  await expect(
-    dialog.getByRole("heading", { name: "Model signal", exact: true }),
-  ).toBeVisible();
-  await expect(dialog).toHaveCSS("transform", "none");
-  await page.screenshot({ path: "test-results/review-case.png" });
-  await dialog.getByLabel("Review decision").selectOption("reviewed");
-  await page.getByRole("button", { name: "Undo", exact: true }).click();
-  await expect(dialog.getByLabel("Review decision")).toHaveValue(
-    "needs_review",
-  );
-  await dialog
-    .getByLabel("Review note")
-    .fill("Check invoice evidence with finance.");
-  await dialog.getByRole("button", { name: "Save note" }).click();
-  await dialog.getByRole("tab", { name: /^Activity/ }).click();
-  await expect(dialog.getByText("Review note saved.")).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(dialog).not.toBeVisible();
-  await expect(
-    page.getByRole("button", {
-      name: `Investigate ${transaction}`,
-      exact: true,
-    }),
-  ).toBeFocused();
-  await page.getByLabel("Search payments").fill(transaction);
-  await expect(page.getByRole("button", { name: /^Investigate / })).toHaveCount(
-    1,
-  );
-  const downloadEvent = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export review" }).click();
-  const download = await downloadEvent;
-  expect(download.suggestedFilename()).toBe("transaction-review.csv");
-  await page.getByRole("button", { name: "Reset", exact: true }).click();
-  await page.getByLabel("Priority filter").selectOption("medium");
-  await expect(page.locator(".queue-table .priority.high")).toHaveCount(0);
-  expect(errors).toEqual([]);
+  for (const width of [1280, 1920]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const row = page.locator(".case-queue-row").first();
+    await expect(row).toBeVisible();
+    await expect(row).toHaveCSS("height", "72px");
+    await expect(row.locator(".case-row-title strong")).toHaveCSS(
+      "font-size",
+      "14px",
+    );
+    await expect(row.locator(".case-row-reason")).toBeVisible();
+    await expect(row.locator(".case-row-context")).toBeVisible();
+    expect(
+      (await row.locator(".case-row-title").boundingBox())!.width,
+    ).toBeLessThan(450);
+    expect(
+      (await page.locator(".case-search").boundingBox())!.height,
+    ).toBeGreaterThanOrEqual(40);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: `test-results/queue-balanced-${width}.png`,
+      fullPage: true,
+    });
+  }
 });
 
-test("appearance, live model cutoff, mobile sheet and keyboard", async ({
+test("real engine case grouping preserves every original finding and payment output", async ({
   page,
+  request,
 }) => {
-  await page.getByRole("button", { name: "Use dark appearance" }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await page.screenshot({
-    path: "test-results/review-dark.png",
-    fullPage: true,
-  });
-  await page
-    .getByRole("button", { name: "Review settings", exact: true })
-    .click();
-  const settings = page.getByRole("dialog");
-  await settings.getByLabel("Minimum model score").fill("100");
-  await expect(settings.locator("output")).toHaveText("100 / 100");
-  await expect(settings.locator(".live-preview strong")).toHaveText("1");
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Use light appearance" }).click();
-  await page.setViewportSize({ width: 390, height: 844 });
-  const paymentCell = page
-    .getByRole("table", { name: "Transactions needing review" })
-    .locator("tbody tr")
-    .first()
-    .locator("td")
-    .nth(1);
-  expect((await paymentCell.boundingBox())!.width).toBeGreaterThan(110);
-  await expect(
-    page
-      .getByRole("table", { name: "Transactions needing review" })
-      .locator(".amount-cell")
-      .first(),
-  ).toBeVisible();
-  await page.screenshot({
-    path: "test-results/review-mobile.png",
-    fullPage: true,
-  });
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
+  const response = await request.get("/api/demo");
+  const run = await response.json();
+  expect(run.row_count).toBe(200);
+  expect(run.review_cases.length).toBeLessThan(run.cases.length);
+  const findingIds = new Set(
+    run.review_cases.flatMap((c: any) =>
+      c.findings.map((f: any) => f.finding_id),
     ),
-  ).toBe(true);
+  );
+  const originals = run.transactions.flatMap((p: any) =>
+    p.findings.map((f: any) => f.finding_id),
+  );
+  expect(findingIds.size).toBe(originals.length);
+  await page.screenshot({
+    path: "test-results/cases-overview.png",
+    fullPage: true,
+  });
   await page
     .getByRole("button", { name: /^Investigate / })
     .first()
     .click();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await expect(page.getByRole("dialog")).toHaveCSS("transform", "none");
-  await page.screenshot({ path: "test-results/review-mobile-case.png" });
-  await page.keyboard.press("Tab");
-  expect(
-    await page.evaluate(
-      () => !!document.activeElement?.closest('[role="dialog"]'),
-    ),
-  ).toBe(true);
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Case investigation" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "What we observed" }),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
-test("upload and manual mapping use the real analysis endpoint", async ({
+test("one invoice case opens both payments, exact calculation and original evidence", async ({
   page,
 }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await uploadCaseFile(page);
+  await page.getByLabel("Search cases").fill("PAY-B");
+  await expect(page.getByRole("button", { name: /^Investigate / })).toHaveCount(
+    1,
+  );
+  await page.getByRole("button", { name: /^Investigate / }).click();
+  const detail = page.getByRole("region", { name: "Case investigation" });
+  await expect(
+    detail.getByRole("heading", {
+      name: "Possible invoice overpayment",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(detail.locator(".case-calculation")).toContainText("£2,480.00");
+  await expect(
+    detail
+      .getByRole("table", { name: "Payments in this case" })
+      .getByRole("row"),
+  ).toHaveCount(3);
+  await expect(
+    detail
+      .getByRole("table", { name: "Payments in this case" })
+      .getByText("PAY-A", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    detail
+      .getByRole("table", { name: "Payments in this case" })
+      .getByText("PAY-B", { exact: true }),
+  ).toBeVisible();
+  await detail.getByRole("button", { name: "View source" }).first().click();
+  await expect(detail.locator(".member-source")).toContainText("Source row 2");
+  await detail.getByText("All original audit findings (2)").click();
+  await expect(detail.locator(".original-finding")).toHaveCount(2);
+  await page.screenshot({
+    path: "test-results/case-investigation.png",
+    fullPage: true,
+  });
+  await detail.getByRole("button", { name: "Back to cases" }).click();
+  await expect(page.getByLabel("Search cases")).toHaveValue("PAY-B");
+  await expect(
+    page.getByRole("button", { name: /^Investigate / }),
+  ).toBeFocused();
+  expect(errors).toEqual([]);
+});
+
+test("note drafts survive navigation; review and undo do not erase evidence", async ({
+  page,
+}) => {
+  await uploadCaseFile(page);
+  await page
+    .getByRole("button", { name: /^Investigate / })
+    .first()
+    .click();
+  const detail = page.getByRole("region", { name: "Case investigation" });
+  await detail.getByLabel("Review note").fill("Request amended invoice.");
+  await detail.getByRole("button", { name: "Next case", exact: true }).click();
+  await expect(detail.getByLabel("Review note")).toHaveValue("");
+  await detail
+    .getByRole("button", { name: "Previous case", exact: true })
+    .click();
+  await expect(detail.getByLabel("Review note")).toHaveValue(
+    "Request amended invoice.",
+  );
+  await detail.getByRole("button", { name: "Save note", exact: true }).click();
+  await detail.getByLabel("Review decision").selectOption("reviewed");
+  await expect(
+    detail.getByText(/no longer matches your filters/),
+  ).toBeVisible();
+  await expect(
+    detail.getByRole("heading", {
+      name: "Possible invoice overpayment",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await detail.getByRole("button", { name: "Undo last review action" }).click();
+  await expect(detail.getByLabel("Review decision")).toHaveValue(
+    "needs_review",
+  );
+  await expect(detail.getByLabel("Review note")).toHaveValue(
+    "Request amended invoice.",
+  );
+});
+
+test("filters select complete cases; export includes members, source dates and case identity", async ({
+  page,
+}) => {
+  await uploadCaseFile(page);
+  await page
+    .getByLabel("Finding filter")
+    .selectOption("possible_duplicate_payment");
+  await expect(page.getByRole("button", { name: /^Investigate / })).toHaveCount(
+    1,
+  );
+  await page.getByText("Export review", { exact: true }).click();
+  const event = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Member payments (.csv)" }).click();
+  const download = await event;
+  const contents = await readFile((await download.path())!, "utf8");
+  expect(contents).toContain('"case_id"');
+  expect(contents).toContain('"transaction_date"');
+  expect(contents).toContain("PAY-A");
+  expect(contents).toContain("PAY-B");
+  expect(contents).not.toContain("PAY-C");
+  expect(contents.split("\r\n")).toHaveLength(3);
+  const summaryEvent = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Case summaries (.csv)" }).click();
+  const summaryFile = await summaryEvent;
+  const summaryContents = await readFile((await summaryFile.path())!, "utf8");
+  expect(summaryContents).toContain('"case_potential_excess"');
+  expect(summaryContents).toContain('"2480"');
+  expect(summaryContents.split("\r\n")).toHaveLength(2);
+  await page.getByRole("button", { name: "Reset", exact: true }).click();
+  await page.getByLabel("Currency filter").selectOption("USD");
+  await expect(page.getByRole("button", { name: /^Investigate / })).toHaveCount(
+    1,
+  );
+  await page.getByLabel("Search cases").fill("DOES-NOT-EXIST");
+  await expect(
+    page.getByRole("heading", { name: "No matching cases" }),
+  ).toBeVisible();
+});
+
+test("focus mode, filtered navigation, keyboard opening and source context", async ({
+  page,
+}) => {
+  await uploadCaseFile(page);
+  const first = page.getByRole("button", { name: /^Investigate / }).first();
+  await first.focus();
+  await page.keyboard.press("Enter");
+  const detail = page.getByRole("region", { name: "Case investigation" });
+  await expect(
+    detail.getByRole("heading", {
+      name: "Possible invoice overpayment",
+      exact: true,
+    }),
+  ).toBeFocused();
+  await detail.getByRole("button", { name: "Focus on this case" }).click();
+  await expect(page.locator(".review-queue-pane")).not.toBeVisible();
+  await detail.getByRole("button", { name: "Show case navigator" }).click();
+  await expect(page.locator(".review-queue-pane")).toBeVisible();
+  await page.getByLabel("Search cases").fill("PAY-C");
+  await expect(
+    detail.getByText(/no longer matches your filters/),
+  ).toBeVisible();
+  await expect(
+    detail.getByRole("button", { name: "Next case" }),
+  ).toBeDisabled();
+  await detail.getByRole("button", { name: "Back to cases" }).click();
+  await page.getByRole("button", { name: /^Investigate / }).click();
+  await expect(
+    detail.getByText(/Large-payment comparison: at or above 10,000/),
+  ).toBeVisible();
+});
+
+test("manual upload mapping remains available", async ({ page }) => {
   await page.getByRole("button", { name: "New review" }).click();
   await page
     .getByLabel("Transaction file", { exact: true })
@@ -148,94 +273,145 @@ test("upload and manual mapping use the real analysis endpoint", async ({
       .getByLabel("Currency")
       .getByRole("option", { name: "is_anomaly", exact: true }),
   ).toHaveCount(0);
-  const showAllColumns = dialog.getByLabel("Show all source columns");
-  await showAllColumns.click();
-  await expect(showAllColumns).toBeChecked();
+  await dialog.getByLabel("Show all source columns").click();
   await expect(
     dialog
       .getByLabel("Currency")
       .getByRole("option", { name: "is_anomaly", exact: true }),
   ).toHaveCount(1);
-  await showAllColumns.click();
-  await expect(showAllColumns).not.toBeChecked();
   await dialog.getByLabel("Payee", { exact: true }).selectOption("description");
   await dialog
     .getByText("Invoice and optional columns", { exact: true })
     .click();
   await dialog.getByLabel("Description", { exact: true }).selectOption("");
   await dialog.getByRole("button", { name: "Start review" }).click();
-  await expect(dialog).not.toBeVisible({ timeout: 20000 });
-  await expect(
-    page.getByRole("table", { name: "Transactions needing review" }),
-  ).toBeVisible();
+  await expect(dialog).not.toBeVisible();
   await expect(page.getByText("Uploaded file", { exact: true })).toBeVisible();
 });
 
-test("reduced motion uses a usable panel and does not hide content", async ({
+test("large linked invoice keeps every payment instead of a first-six preview", async ({
   page,
 }) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page
-    .getByRole("button", { name: /^Investigate / })
-    .first()
-    .click();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Why this needs review" }),
-  ).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).not.toBeVisible();
+  const contents =
+    "transaction_id,transaction_date,account_id,counterparty,currency,amount,invoice_reference,invoice_amount,vendor_id\n" +
+    Array.from(
+      { length: 100 },
+      (_, i) => `PART-${i},2025-06-01,AP,Supplier A,GBP,1,INV-100,100,V1`,
+    ).join("\n");
+  await uploadCaseFile(page, contents, 100);
+  await page.getByLabel("Search cases").fill("PART-99");
+  await expect(page.getByRole("button", { name: /^Investigate / })).toHaveCount(
+    1,
+  );
+  await page.getByRole("button", { name: /^Investigate / }).click();
+  const table = page.getByRole("table", { name: "Payments in this case" });
+  await expect(table.getByRole("row")).toHaveCount(101);
+  await expect(table.getByText("PART-99", { exact: true })).toBeAttached();
+  await expect(page.locator(".case-calculation")).toContainText("£100.00");
 });
 
-test("queue and case panel meet automated WCAG AA checks", async ({ page }) => {
-  const queue = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
+test("synthetic 10k-case presentation stays virtualised and searchable", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(60000);
+  const run = await (await request.get("/api/demo")).json();
+  const template = run.review_cases.find((c: any) => c.members.length === 1);
+  // A browser-only stress fixture, not a claim that the engine analysed these rows.
+  run.filename = "Synthetic browser scale fixture";
+  run.row_count = 10000;
+  run.review_cases = Array.from({ length: 10000 }, (_, index) => {
+    const member = {
+      ...template.members[0],
+      id: `load-row-${index}`,
+      transaction: {
+        ...template.members[0].transaction,
+        transaction_id: `LOAD-${String(index).padStart(5, "0")}`,
+      },
+    };
+    return {
+      ...template,
+      id: `load-case-${index}`,
+      members: [member],
+      transaction: member.transaction,
+      related_case_ids: [],
+    };
+  });
+  await page.route("**/api/demo", (route) => route.fulfill({ json: run }));
+  await page.reload();
+  await expect(
+    page.getByRole("region", { name: "Review cases", exact: true }),
+  ).toBeVisible();
   expect(
-    queue.violations.map((violation) => ({
-      id: violation.id,
-      nodes: violation.nodes.map((node) => ({
-        target: node.target,
-        summary: node.failureSummary,
+    await page.getByRole("button", { name: /^Investigate / }).count(),
+  ).toBeLessThan(50);
+  const timings: number[] = [];
+  for (const id of ["09999", "01234", "00001", "05555", "09876"]) {
+    const start = performance.now();
+    await page.getByLabel("Search cases").fill(`LOAD-${id}`);
+    await expect(
+      page.getByRole("button", { name: /^Investigate / }),
+    ).toHaveCount(1);
+    timings.push(performance.now() - start);
+  }
+  console.log(
+    "10k browser fixture search timings (ms)",
+    timings.map((v) => Math.round(v)),
+  );
+  expect(Math.max(...timings)).toBeLessThan(1500);
+});
+
+test("accessibility and desktop layouts, dark appearance and narrow fallback", async ({
+  page,
+}) => {
+  const scan = async () => {
+    const results = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+      .analyze();
+    expect(
+      results.violations.map(({ id, nodes }) => ({
+        id,
+        targets: nodes.map((node) => node.target),
       })),
-    })),
-  ).toEqual([]);
+    ).toEqual([]);
+  };
+  await scan();
+  await uploadCaseFile(page);
   await page
     .getByRole("button", { name: /^Investigate / })
     .first()
     .click();
-  await expect(page.getByRole("dialog")).toHaveCSS("transform", "none");
-  const panel = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(
-    panel.violations.map((violation) => ({
-      id: violation.id,
-      nodes: violation.nodes.map((node) => ({
-        target: node.target,
-        summary: node.failureSummary,
-      })),
-    })),
-  ).toEqual([]);
-  await page.keyboard.press("Escape");
+  await scan();
+  for (const [width, height] of [
+    [1280, 800],
+    [1440, 900],
+    [1920, 1080],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await expect(
+      page.getByRole("table", { name: "Payments in this case" }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: `test-results/case-${width}.png`,
+      fullPage: true,
+    });
+  }
   await page.getByRole("button", { name: "Use dark appearance" }).click();
-  const dark = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
-  expect(
-    dark.violations.map(({ id, nodes }) => ({
-      id,
-      targets: nodes.map((node) => node.target),
-    })),
-  ).toEqual([]);
+  await scan();
+  await page.screenshot({ path: "test-results/case-dark.png", fullPage: true });
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 390, height: 844 });
-  const mobile = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-    .analyze();
+  await expect(
+    page.getByRole("button", { name: "Back to cases" }),
+  ).toBeVisible();
   expect(
-    mobile.violations.map(({ id, nodes }) => ({
-      id,
-      targets: nodes.map((node) => node.target),
-    })),
-  ).toEqual([]);
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
 });

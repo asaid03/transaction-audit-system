@@ -40,7 +40,7 @@ export const money = (
   }
 };
 export function caseTitle(item: ReviewCase) {
-  return item.findings[0]?.finding ?? "Unusual payment pattern";
+  return item.title;
 }
 export const humanField = (field: string) =>
   ({
@@ -58,9 +58,21 @@ export const humanField = (field: string) =>
 export function exportCsv(
   rows: ReviewCase[],
   decisions: Record<string, { status: ReviewStatus; note: string }>,
+  summary = false,
 ) {
   const fields = [
+    "case_id",
+    "case_title",
+    "payment_count",
+    "case_invoice_amount",
+    "case_paid_total",
+    "case_potential_excess",
+    "case_remaining",
+    "case_invoice_currency",
+    "unresolved_links",
     "transaction_id",
+    "transaction_date",
+    "account_id",
     "counterparty",
     "amount",
     "currency",
@@ -82,23 +94,48 @@ export function exportCsv(
   };
   const contents = [
     fields,
-    ...rows.map((item) => [
-      item.transaction.transaction_id,
-      item.transaction.counterparty,
-      item.transaction.amount,
-      item.transaction.currency,
-      item.transaction.invoice_reference,
-      item.row_number,
-      item.findings.length ? item.audit_band : "",
-      item.findings.length ? item.audit_score : "",
-      item.model.decision === null ? "" : item.model.score,
-      item.model.flagged,
-      item.findings.map((f) => f.finding).join("; ") ||
-        "Unusual payment pattern",
-      item.findings.map((f) => f.evidence).join("; ") || item.model.context,
-      statusLabels[decisions[item.id]?.status ?? "needs_review"],
-      decisions[item.id]?.note ?? "",
-    ]),
+    ...rows.flatMap((item) =>
+      (summary ? [null] : item.members.length ? item.members : [null]).map(
+        (member) => [
+          item.id,
+          item.title,
+          item.members.length,
+          summary ? item.invoice_summary?.invoice : "",
+          summary ? item.invoice_summary?.paid : "",
+          summary ? item.invoice_summary?.excess : "",
+          summary ? item.invoice_summary?.remaining : "",
+          summary ? item.invoice_summary?.currency : "",
+          item.unresolved_links.join("; "),
+          member?.transaction.transaction_id ??
+            item.members
+              .map((m) => text(m.transaction.transaction_id))
+              .join("; "),
+          member?.transaction.transaction_date ?? "",
+          member?.transaction.account_id ?? "",
+          member?.transaction.counterparty ?? item.transaction.counterparty,
+          member
+            ? member.transaction.amount
+            : item.totals.length === 1
+              ? item.totals[0].amount
+              : "",
+          member
+            ? member.transaction.currency
+            : item.totals.map((total) => total.currency).join("; "),
+          member?.transaction.invoice_reference ??
+            item.transaction.invoice_reference,
+          member?.row_number ?? "",
+          item.findings.length ? item.audit_band : "",
+          item.findings.length ? item.audit_score : "",
+          member?.model.decision == null ? "" : member.model.score,
+          member ? member.model.flagged : "",
+          item.findings.map((f) => f.finding).join("; ") ||
+            "Unusual payment pattern",
+          item.findings.map((f) => f.evidence).join("; ") || item.model.context,
+          statusLabels[decisions[item.id]?.status ?? "needs_review"],
+          decisions[item.id]?.note ?? "",
+        ],
+      ),
+    ),
   ]
     .map((row) => row.map(escape).join(","))
     .join("\r\n");
@@ -107,7 +144,7 @@ export function exportCsv(
   );
   const link = document.createElement("a");
   link.href = url;
-  link.download = "transaction-review.csv";
+  link.download = summary ? "case-review.csv" : "transaction-review.csv";
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

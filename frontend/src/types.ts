@@ -16,7 +16,7 @@ export interface Finding {
   row_number: number;
   review_priority_band: string;
 }
-export interface ReviewCase {
+export interface PaymentRecord {
   id: string;
   row_number: number;
   transaction: Record<string, Value>;
@@ -32,6 +32,22 @@ export interface ReviewCase {
     context: string;
   };
 }
+export interface ReviewCase extends PaymentRecord {
+  kind: string;
+  title: string;
+  members: PaymentRecord[];
+  context_members: PaymentRecord[];
+  unresolved_links: string[];
+  related_case_ids: string[];
+  totals: { currency: string; amount: string | null }[];
+  invoice_summary: null | {
+    currency: string;
+    invoice: string;
+    paid: string;
+    excess: string;
+    remaining: string;
+  };
+}
 export interface AuditRun {
   filename: string;
   demo: boolean;
@@ -40,8 +56,9 @@ export interface AuditRun {
   date_end: string | null;
   mapping: Record<string, string>;
   columns: string[];
-  cases: ReviewCase[];
-  transactions: ReviewCase[];
+  cases: PaymentRecord[];
+  transactions: PaymentRecord[];
+  review_cases: ReviewCase[];
   cleaning: string[];
   finding_count: number;
   large_payment_limit: number;
@@ -59,12 +76,7 @@ export interface FileInspection {
   sample: Record<string, Value>[];
   cleaning: string[];
 }
-export interface ReviewEvent {
-  at: string;
-  description: string;
-}
 export interface Decision {
   status: ReviewStatus;
   note: string;
-  events: ReviewEvent[];
 }

@@ -1,579 +1,529 @@
-import { useEffect, useState } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
-import {
-  AnimatePresence,
-  motion,
-  useDragControls,
-  useReducedMotion,
-} from "motion/react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
-  ArrowUpRight,
   Check,
   ChevronDown,
+  Expand,
   FileText,
-  History,
-  ListChecks,
-  MessageSquare,
+  Minimize,
   Sparkles,
-  X,
+  Undo2,
 } from "lucide-react";
 import { date, humanField, money, statusLabels, text } from "./format";
 import { Priority } from "./Queue";
-import type { AuditRun, Decision, ReviewCase, ReviewStatus } from "./types";
+import type {
+  AuditRun,
+  Decision,
+  PaymentRecord,
+  ReviewCase,
+  ReviewStatus,
+} from "./types";
+
+function PaymentTable({
+  payments,
+  context = false,
+}: {
+  payments: PaymentRecord[];
+  context?: boolean;
+}) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  return (
+    <div className="case-payment-table">
+      <table
+        aria-label={context ? "Context payments" : "Payments in this case"}
+      >
+        <thead>
+          <tr>
+            <th>Transaction / source row</th>
+            <th>Date</th>
+            <th>Invoice reference</th>
+            <th className="align-right">Payment</th>
+            <th>Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {payments.map((payment) => (
+            <PaymentRows
+              key={payment.id}
+              payment={payment}
+              expanded={expanded === payment.id}
+              onToggle={() =>
+                setExpanded(expanded === payment.id ? null : payment.id)
+              }
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PaymentRows({
+  payment,
+  expanded,
+  onToggle,
+}: {
+  payment: PaymentRecord;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const transaction = payment.transaction;
+  return (
+    <>
+      <tr>
+        <th scope="row">
+          <span className="mono">{text(transaction.transaction_id)}</span>
+          <small>Source row {payment.row_number}</small>
+        </th>
+        <td>{date(transaction.transaction_date)}</td>
+        <td className="mono">{text(transaction.invoice_reference)}</td>
+        <td className="align-right">
+          {money(transaction.amount, transaction.currency)}
+          <small>{text(transaction.currency)}</small>
+        </td>
+        <td>
+          <button
+            className="case-text-button"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            aria-controls={`source-${payment.id}`}
+          >
+            {expanded ? "Hide" : "View"} source
+            <ChevronDown size={13} />
+          </button>
+        </td>
+      </tr>
+      {expanded && (
+        <tr>
+          <td colSpan={5}>
+            <div id={`source-${payment.id}`} className="member-source">
+              <h4>Source row {payment.row_number}</h4>
+              <dl>
+                {Object.entries(transaction).map(([field, value]) => (
+                  <div key={field}>
+                    <dt>{humanField(field)}</dt>
+                    <dd>
+                      {field.includes("amount")
+                        ? money(value, transaction.currency)
+                        : text(value)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              <p>
+                Original audit score: {payment.audit_score} / 100.{" "}
+                {payment.audit_drivers}
+              </p>
+              <p>
+                Model score:{" "}
+                {payment.model.decision === null
+                  ? "Not available"
+                  : `${payment.model.score} / 100`}
+                . {payment.model.context}
+              </p>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
 
 export default function CasePanel({
   item,
   run,
   decision,
-  open,
-  onClose,
-  onDecision,
+  draft,
+  onDraft,
   onNote,
+  onDecision,
+  onClose,
   onNavigate,
   position,
   count,
-  onUndo,
+  outside,
+  focusMode,
+  onFocusMode,
   canUndo,
+  onUndo,
+  onOpenCase,
 }: {
-  item: ReviewCase | null;
+  item: ReviewCase;
   run: AuditRun;
-  decision: Decision | undefined;
-  open: boolean;
+  decision?: Decision;
+  draft: string;
+  onDraft: (value: string) => void;
+  onNote: () => void;
+  onDecision: (value: ReviewStatus) => void;
   onClose: () => void;
-  onDecision: (status: ReviewStatus) => void;
-  onNote: (note: string) => void;
-  onNavigate: (id: string) => void;
+  onNavigate: (value: "previous" | "next") => void;
   position: number;
   count: number;
-  onUndo: () => void;
+  outside: boolean;
+  focusMode: boolean;
+  onFocusMode: () => void;
   canUndo: boolean;
+  onUndo: () => void;
+  onOpenCase: (id: string) => void;
 }) {
-  const reduced = useReducedMotion();
-  const dragControls = useDragControls();
-  const [mobile, setMobile] = useState(window.innerWidth < 760);
-  const [note, setNote] = useState("");
-  const [section, setSection] = useState<"evidence" | "activity">("evidence");
+  const heading = useRef<HTMLHeadingElement>(null);
+  const scroll = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const query = window.matchMedia("(max-width: 759px)");
-    const update = () => setMobile(query.matches);
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-  useEffect(() => {
-    setNote(decision?.note ?? "");
-    setSection("evidence");
-  }, [item?.id]);
-  useEffect(() => {
-    setNote(decision?.note ?? "");
-  }, [decision?.note]);
-  if (!item) return null;
-  const transaction = item.transaction;
+    scroll.current?.scrollTo(0, 0);
+    heading.current?.focus({ preventScroll: true });
+  }, [item.id]);
+  const summary = item.invoice_summary;
+  const types = new Set(item.findings.map((f) => f.technical_issue_type));
+  const split = types.has("possible_split_payment");
+  const excess = summary && Number(summary.excess) > 0;
+  const modelMembers = item.members.filter((member) => member.model.flagged);
   const status = decision?.status ?? "needs_review";
-  const explicitIds = new Set(
-    item.findings
-      .filter((f) => !f.related_dataset || f.related_dataset === "transactions")
-      .flatMap((f) =>
-        (f.related_record_id ?? "").split(",").map((id) => id.trim()),
-      ),
-  );
-  const explicitRelated = run.transactions.filter(
-    (record) =>
-      record.id !== item.id &&
-      explicitIds.has(String(record.transaction.transaction_id)),
-  );
-  const contextRelated = explicitRelated.length
-    ? []
-    : run.transactions
-        .filter((record) => {
-          if (
-            record.id === item.id ||
-            !transaction.counterparty ||
-            record.transaction.counterparty !== transaction.counterparty ||
-            record.transaction.currency !== transaction.currency
-          )
-            return false;
-          const sameAmount =
-            transaction.amount !== null &&
-            Number(record.transaction.amount) === Number(transaction.amount);
-          const days =
-            Math.abs(
-              new Date(String(record.transaction.transaction_date)).getTime() -
-                new Date(String(transaction.transaction_date)).getTime(),
-            ) / 86400000;
-          return sameAmount || days <= 3;
-        })
-        .slice(0, 6);
-  const related = explicitRelated.length ? explicitRelated : contextRelated;
-  const findPrevious = () => onNavigate("previous");
-  const findNext = () => onNavigate("next");
-  const offscreen = reduced
-    ? { opacity: 0 }
-    : mobile
-      ? { y: "100%", opacity: 1 }
-      : { x: "100%", opacity: 1 };
-
+  const dates = item.members
+    .map((m) => m.transaction.transaction_date)
+    .filter(Boolean)
+    .map(String)
+    .sort();
   return (
-    <Dialog.Root
-      open={open}
-      onOpenChange={(value) => {
-        if (!value) onClose();
-      }}
-    >
-      <AnimatePresence>
-        {open && (
-          <Dialog.Portal forceMount>
-            <Dialog.Overlay asChild>
-              <motion.div
-                className="panel-backdrop"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: reduced ? 0.12 : 0.2 }}
-              />
-            </Dialog.Overlay>
-            <Dialog.Content
-              asChild
-              aria-describedby="case-description"
-              onCloseAutoFocus={(event) => {
-                event.preventDefault();
-                const trigger = Array.from(
-                  document.querySelectorAll<HTMLButtonElement>(
-                    "button[aria-label]",
-                  ),
-                ).find(
-                  (button) =>
-                    button.getAttribute("aria-label") ===
-                    `Investigate ${String(transaction.transaction_id)}`,
-                );
-                (
-                  trigger ??
-                  document.querySelector<HTMLInputElement>(
-                    'input[aria-label="Search payments"]',
-                  )
-                )?.focus();
-              }}
-            >
-              <motion.aside
-                className="case-panel"
-                initial={offscreen}
-                animate={{ x: 0, y: 0, opacity: 1 }}
-                exit={offscreen}
-                transition={
-                  reduced
-                    ? { duration: 0.12 }
-                    : { type: "spring", stiffness: 370, damping: 38, mass: 0.9 }
-                }
-                drag={mobile && !reduced ? "y" : false}
-                dragControls={dragControls}
-                dragListener={false}
-                dragConstraints={{ top: 0, bottom: 0 }}
-                dragElastic={{ top: 0.08, bottom: 0.8 }}
-                onDragEnd={(_, info) => {
-                  if (info.offset.y + info.velocity.y * 0.15 > 140) onClose();
-                }}
-              >
-                <div
-                  className="panel-drag-zone"
-                  aria-hidden="true"
-                  onPointerDown={(event) => {
-                    if (mobile && !reduced) dragControls.start(event);
-                  }}
-                >
-                  <div className="panel-drag-handle" />
+    <section className="investigation" aria-label="Case investigation">
+      <header className="investigation-toolbar">
+        <button className="case-text-button" onClick={onClose}>
+          <ArrowLeft size={15} />
+          Back to cases
+        </button>
+        <label className="toolbar-review-decision">
+          <span>Review decision</span>
+          <select
+            aria-label="Review decision"
+            value={status}
+            onChange={(event) => onDecision(event.target.value as ReviewStatus)}
+          >
+            {Object.entries(statusLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="investigation-navigation">
+          <button
+            className="icon-button"
+            aria-label="Previous case"
+            title="Previous case"
+            disabled={position <= 0}
+            onClick={() => onNavigate("previous")}
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <span>
+            {position < 0 ? "Outside results" : `${position + 1} of ${count}`}
+          </span>
+          <button
+            className="icon-button"
+            aria-label="Next case"
+            title="Next case"
+            disabled={position < 0 || position >= count - 1}
+            onClick={() => onNavigate("next")}
+          >
+            <ArrowRight size={16} />
+          </button>
+          <button
+            className="icon-button focus-case"
+            aria-label={
+              focusMode ? "Show case navigator" : "Focus on this case"
+            }
+            title={focusMode ? "Show case navigator" : "Focus on this case"}
+            onClick={onFocusMode}
+          >
+            {focusMode ? <Minimize size={16} /> : <Expand size={16} />}
+          </button>
+        </div>
+      </header>
+      {outside && (
+        <div className="case-context-message" role="status">
+          This case no longer matches your filters. Your evidence stays open
+          until you choose another case.
+        </div>
+      )}
+      <div className="investigation-scroll" ref={scroll}>
+        <div className="investigation-heading">
+          <div className="case-heading-meta">
+            <Priority item={item} />
+            <span>{item.members.length} payments</span>
+            <span>{item.findings.length} audit findings</span>
+          </div>
+          <h2 ref={heading} tabIndex={-1}>
+            {item.title}
+          </h2>
+          <p>
+            {text(item.transaction.counterparty)}
+            {item.transaction.invoice_reference
+              ? ` / ${item.transaction.invoice_reference}`
+              : ""}
+          </p>
+          {dates.length > 0 && (
+            <small>
+              {date(dates[0])}
+              {dates[dates.length - 1] !== dates[0]
+                ? ` to ${date(dates[dates.length - 1])}`
+                : ""}
+            </small>
+          )}
+        </div>
+        <section className="investigation-section observed-section">
+          <h3>What we observed</h3>
+          {summary ? (
+            <>
+              <p className="observed-fact">
+                {item.members.length} recorded payments total{" "}
+                <strong>{money(summary.paid, summary.currency)}</strong> against
+                a supplied invoice amount of{" "}
+                <strong>{money(summary.invoice, summary.currency)}</strong>.
+              </p>
+              <div className="case-calculation">
+                <div>
+                  <span>Invoice amount</span>
+                  <strong>{money(summary.invoice, summary.currency)}</strong>
                 </div>
-                <div className="panel-topbar">
+                <div>
+                  <span>Total paid</span>
+                  <strong>{money(summary.paid, summary.currency)}</strong>
+                </div>
+                <div
+                  className={
+                    excess ? "calculation-excess" : "calculation-balanced"
+                  }
+                >
                   <span>
-                    <span className="mono">
-                      {text(transaction.transaction_id)}
-                    </span>
-                    <span className="panel-row">
-                      Source row {item.row_number}
-                    </span>
+                    {excess
+                      ? "Potential excess"
+                      : Number(summary.remaining) > 0
+                        ? "Remaining amount"
+                        : "Difference"}
                   </span>
-                  <div className="panel-nav">
-                    <button
-                      className="icon-button"
-                      title="Previous case"
-                      aria-label="Previous case"
-                      onClick={findPrevious}
-                      disabled={position <= 0}
-                    >
-                      <ArrowLeft size={16} />
-                    </button>
-                    <span className="mono">
-                      {position >= 0 ? position + 1 : "—"} / {count}
-                    </span>
-                    <button
-                      className="icon-button"
-                      title="Next case"
-                      aria-label="Next case"
-                      onClick={findNext}
-                      disabled={position < 0 || position >= count - 1}
-                    >
-                      <ArrowRight size={16} />
-                    </button>
-                    <Dialog.Close asChild>
-                      <button
-                        className="icon-button close-panel"
-                        aria-label="Close case"
-                        title="Close case"
-                      >
-                        <X size={18} />
-                      </button>
-                    </Dialog.Close>
-                  </div>
-                </div>
-                <div className="panel-heading">
-                  <div className="panel-kicker">
-                    <Priority item={item} />
-                    <span>
-                      {item.findings.length
-                        ? `${item.findings.length} audit ${item.findings.length === 1 ? "finding" : "findings"}`
-                        : "Supporting model signal"}
-                    </span>
-                  </div>
-                  <Dialog.Title>{text(transaction.counterparty)}</Dialog.Title>
-                  <div className="case-amount">
-                    {money(transaction.amount, transaction.currency)}{" "}
-                    <span>{text(transaction.currency)}</span>
-                  </div>
-                  <Dialog.Description id="case-description">
-                    {date(transaction.transaction_date)}
-                    <span>·</span>Account{" "}
-                    <span className="mono">{text(transaction.account_id)}</span>
-                  </Dialog.Description>
-                  <div className="decision-control">
-                    <label htmlFor="case-status">Review decision</label>
-                    <div className="select-wrap">
-                      <select
-                        id="case-status"
-                        value={status}
-                        onChange={(event) =>
-                          onDecision(event.target.value as ReviewStatus)
-                        }
-                      >
-                        {Object.entries(statusLabels).map(([value, label]) => (
-                          <option value={value} key={value}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown size={14} />
-                    </div>
-                  </div>
-                </div>
-                <div
-                  className="panel-tabs"
-                  role="tablist"
-                  aria-label="Case sections"
-                >
-                  <button
-                    role="tab"
-                    aria-selected={section === "evidence"}
-                    aria-controls="case-evidence"
-                    id="evidence-tab"
-                    onClick={() => setSection("evidence")}
-                  >
-                    <ListChecks size={15} />
-                    Evidence
-                  </button>
-                  <button
-                    role="tab"
-                    aria-selected={section === "activity"}
-                    aria-controls="case-activity"
-                    id="activity-tab"
-                    onClick={() => setSection("activity")}
-                  >
-                    <History size={15} />
-                    Activity
-                    {Boolean(decision?.events.length) && (
-                      <span>{decision!.events.length}</span>
+                  <strong>
+                    {money(
+                      excess ? summary.excess : summary.remaining,
+                      summary.currency,
                     )}
-                  </button>
+                  </strong>
                 </div>
-                <div className="panel-scroll">
-                  {section === "evidence" ? (
-                    <div
-                      role="tabpanel"
-                      id="case-evidence"
-                      aria-labelledby="evidence-tab"
-                    >
-                      <section className="case-section">
-                        <h3>Why this needs review</h3>
-                        {item.findings.map((finding) => (
-                          <article
-                            className="evidence-finding"
-                            key={finding.finding_id}
-                          >
-                            <div className="finding-marker">
-                              <span
-                                className={`severity-dot ${item.audit_band}`}
-                              />
-                            </div>
-                            <div>
-                              <h4>{finding.finding}</h4>
-                              <p>{finding.evidence}</p>
-                              <div className="next-step">
-                                <ArrowUpRight size={14} />
-                                <span>{finding.recommended_action}</span>
-                              </div>
-                            </div>
-                          </article>
-                        ))}
-                        {!item.findings.length && (
-                          <p className="muted">
-                            No audit checks flagged this payment. The model
-                            identified an unusual pattern for review.
-                          </p>
-                        )}
-                        <div className="model-evidence">
-                          <div>
-                            <Sparkles size={16} />
-                            <h4>Model signal</h4>
-                            {item.model.decision !== null && (
-                              <span className="model-number">
-                                {item.model.score}
-                                <small>/100</small>
-                              </span>
-                            )}
-                          </div>
-                          <p>
-                            {item.model.decision === null
-                              ? "This file has fewer than 50 transactions, so the model did not run."
-                              : item.model.flagged
-                                ? item.model.context
-                                : "This payment was not flagged by the anomaly model."}
-                          </p>
-                          {item.model.decision !== null && (
-                            <details>
-                              <summary>What does this score mean?</summary>
-                              <p>
-                                Relative unusualness within this file, not a
-                                probability of fraud. Flagged payments score
-                                50–100; higher values rank as more unusual.
-                                Invoice and payee patterns also appear in audit
-                                checks, so these signals can overlap.
-                              </p>
-                            </details>
-                          )}
-                        </div>
-                      </section>
-                      {related.length > 0 && (
-                        <section className="case-section related-section">
-                          <div className="section-heading">
-                            <h3>
-                              {explicitRelated.length
-                                ? "Linked payments"
-                                : "Similar payments"}
-                            </h3>
-                            <span>{related.length}</span>
-                          </div>
-                          <p className="section-caption">
-                            {explicitRelated.length
-                              ? "Linked by the audit check above."
-                              : "Same payee and currency, with an equal amount or a payment date within three days. These are context, not confirmed duplicates."}
-                          </p>
-                          <div className="comparison-table">
-                            <table>
-                              <thead>
-                                <tr>
-                                  <th>Transaction</th>
-                                  <th>Date</th>
-                                  <th className="align-right">Paid</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                <tr className="current-payment">
-                                  <td>
-                                    <span className="mono">
-                                      {text(transaction.transaction_id)}
-                                    </span>
-                                    <small>Current payment</small>
-                                  </td>
-                                  <td>
-                                    {date(transaction.transaction_date, {
-                                      day: "2-digit",
-                                      month: "short",
-                                    })}
-                                  </td>
-                                  <td className="align-right">
-                                    {money(
-                                      transaction.amount,
-                                      transaction.currency,
-                                    )}
-                                  </td>
-                                </tr>
-                                {related.map((record) => (
-                                  <tr key={record.id}>
-                                    <td>
-                                      <button
-                                        className="related-link mono"
-                                        onClick={() => onNavigate(record.id)}
-                                      >
-                                        {text(
-                                          record.transaction.transaction_id,
-                                        )}
-                                        <ArrowUpRight size={12} />
-                                      </button>
-                                      <small>
-                                        {text(
-                                          record.transaction.invoice_reference,
-                                        )}
-                                      </small>
-                                    </td>
-                                    <td>
-                                      {date(
-                                        record.transaction.transaction_date,
-                                        { day: "2-digit", month: "short" },
-                                      )}
-                                    </td>
-                                    <td className="align-right">
-                                      {money(
-                                        record.transaction.amount,
-                                        record.transaction.currency,
-                                      )}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                          {transaction.invoice_amount !== undefined &&
-                            transaction.invoice_amount !== null && (
-                              <div className="invoice-total">
-                                <span>Invoice total</span>
-                                <strong>
-                                  {money(
-                                    transaction.invoice_amount,
-                                    transaction.currency,
-                                  )}
-                                </strong>
-                              </div>
-                            )}
-                        </section>
-                      )}
-                      <section className="case-section">
-                        <h3>
-                          <FileText size={15} />
-                          Transaction details
-                        </h3>
-                        <dl className="transaction-details">
-                          {Object.entries(transaction)
-                            .filter(
-                              ([field]) =>
-                                !["is_anomaly", "anomaly_type"].includes(field),
-                            )
-                            .map(([field, value]) => (
-                              <div key={field}>
-                                <dt>{humanField(field)}</dt>
-                                <dd
-                                  className={
-                                    field.endsWith("_id") ||
-                                    field === "invoice_reference"
-                                      ? "mono"
-                                      : ""
-                                  }
-                                >
-                                  {field === "amount" ||
-                                  field === "invoice_amount"
-                                    ? money(value, transaction.currency)
-                                    : field === "transaction_date"
-                                      ? date(value)
-                                      : text(value)}
-                                </dd>
-                              </div>
-                            ))}
-                        </dl>
-                      </section>
-                      <section className="case-section notes-section">
-                        <h3>
-                          <MessageSquare size={15} />
-                          Review note
-                        </h3>
-                        <textarea
-                          aria-label="Review note"
-                          value={note}
-                          onChange={(event) => setNote(event.target.value)}
-                          placeholder="Add context or a question for follow-up…"
-                          rows={3}
-                        />
-                        <div className="note-actions">
-                          <span>Session only · included in CSV export</span>
-                          <button
-                            className="button small"
-                            disabled={note === (decision?.note ?? "")}
-                            onClick={() => onNote(note)}
-                          >
-                            <Check size={14} />
-                            Save note
-                          </button>
-                        </div>
-                      </section>
-                    </div>
-                  ) : (
-                    <div
-                      role="tabpanel"
-                      id="case-activity"
-                      aria-labelledby="activity-tab"
-                      className="case-section"
-                    >
-                      <h3>Review activity</h3>
-                      <p className="section-caption">
-                        This session only. Changes are recorded when you make a
-                        decision or save a note.
-                      </p>
-                      {!decision?.events.length ? (
-                        <div className="empty-activity">
-                          <History size={23} />
-                          <p>No review actions yet</p>
-                        </div>
-                      ) : (
-                        <ol className="activity-list">
-                          {[...decision.events]
-                            .reverse()
-                            .map((event, index) => (
-                              <li key={`${event.at}-${index}`}>
-                                <span className="activity-dot" />
-                                <div>
-                                  <p>{event.description}</p>
-                                  <time dateTime={event.at}>
-                                    {new Date(event.at).toLocaleTimeString(
-                                      "en-GB",
-                                      {
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                        second: "2-digit",
-                                      },
-                                    )}
-                                  </time>
-                                </div>
-                              </li>
-                            ))}
-                        </ol>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div className="panel-footer">
-                  <span>
-                    <i />
-                    Source row {item.row_number}
-                  </span>
-                  {canUndo ? (
-                    <button className="panel-undo" onClick={onUndo}>
-                      Undo
-                    </button>
-                  ) : (
-                    <span>Human review required</span>
-                  )}
-                </div>
-              </motion.aside>
-            </Dialog.Content>
-          </Dialog.Portal>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="observed-fact">
+                {item.findings.length
+                  ? item.findings[0].evidence
+                  : "The anomaly model identified a payment pattern that differs from other transactions in this file. No audit rule established an error."}
+              </p>
+              {item.totals.map((total) => (
+                <p className="case-value" key={total.currency}>
+                  Recorded payment value{" "}
+                  <strong>{money(total.amount, total.currency)}</strong>{" "}
+                  <span>{total.currency}</span>
+                </p>
+              ))}
+              {item.members.length > 1 &&
+                types.has("possible_duplicate_payment") && (
+                  <p className="case-muted">
+                    A reliable invoice comparison is unavailable for this group.
+                    Payment value is not an estimate of loss.
+                  </p>
+                )}
+            </>
+          )}
+          {types.has("large_amount") && (
+            <p className="case-muted">
+              Large-payment comparison: at or above{" "}
+              {run.large_payment_limit.toLocaleString("en-GB")} in the payment's
+              currency. This is the engine's review limit, not a verified
+              company approval policy.
+            </p>
+          )}
+        </section>
+        <section className="investigation-section">
+          <div className="section-heading">
+            <h3>Payments in this case</h3>
+            <span>{item.members.length} source rows</span>
+          </div>
+          {item.members.length ? (
+            <PaymentTable key={item.id} payments={item.members} />
+          ) : (
+            <p>
+              This finding concerns the file rather than an identifiable payment
+              row.
+            </p>
+          )}
+          {item.unresolved_links.length > 0 && (
+            <div className="case-warning">
+              <strong>Some linked evidence could not be included safely</strong>
+              <p>
+                {item.unresolved_links.join(", ")}. These references are
+                unavailable, ambiguous or incompatible with this group. They
+                were not used to combine payments or calculate potential excess.
+              </p>
+            </div>
+          )}
+        </section>
+        <section className="investigation-section explanation-grid">
+          <div>
+            <h3>Why it may matter</h3>
+            <p>
+              {excess
+                ? "Recorded settlement exceeds the supplied invoice amount. If the records are complete and authoritative, the difference may require correction."
+                : split
+                  ? "An invoice was settled in parts. That can be legitimate; the pattern alone does not establish an approval breach."
+                  : (item.findings[0]?.why_it_matters ??
+                    "Unusual patterns can be legitimate. The model signal is a prompt for review, not evidence of fraud.")}
+            </p>
+          </div>
+          <div>
+            <h3>What remains uncertain</h3>
+            <p>
+              {summary
+                ? "Invoice amendments, credits, reversals or an approved payment schedule may explain these records. Supporting documents have not been independently checked. This is not a confirmed loss."
+                : types.has("missing_invoice_reference")
+                  ? "A blank reference does not prove that no invoice or approved exception exists."
+                  : "Source documents and approvals have not been independently verified. A finding does not establish that a payment is invalid."}
+            </p>
+          </div>
+        </section>
+        <section className="investigation-section">
+          <h3>What to check next</h3>
+          <ul className="case-next-actions">
+            {[...new Set(item.findings.map((f) => f.recommended_action))].map(
+              (action) => (
+                <li key={action}>{action}</li>
+              ),
+            )}
+            {!item.findings.length && (
+              <li>
+                Compare the source payment with its supporting documents and the
+                surrounding business context.
+              </li>
+            )}
+          </ul>
+        </section>
+        {item.context_members.length > 0 && (
+          <section className="investigation-section">
+            <h3>Context payments</h3>
+            <p className="case-muted">
+              Supporting comparison rows, excluded from this case's payment
+              totals.
+            </p>
+            <PaymentTable payments={item.context_members} context />
+          </section>
         )}
-      </AnimatePresence>
-    </Dialog.Root>
+        {item.related_case_ids.length > 0 && (
+          <section className="investigation-section">
+            <h3>Other cases involving these payments</h3>
+            <p className="case-muted">
+              Different review questions. Decisions and notes are kept
+              separately.
+            </p>
+            {item.related_case_ids.map((id) => (
+              <div key={id}>
+                <button
+                  className="case-text-button"
+                  onClick={() => onOpenCase(id)}
+                >
+                  {run.review_cases.find((c) => c.id === id)?.title ?? id}
+                  <ArrowRight size={13} />
+                </button>
+              </div>
+            ))}
+          </section>
+        )}
+        <section className="investigation-section">
+          <details>
+            <summary>
+              <FileText size={15} />
+              All original audit findings ({item.findings.length})
+            </summary>
+            {item.findings.map((finding) => (
+              <article className="original-finding" key={finding.finding_id}>
+                <h4>{finding.finding}</h4>
+                <p>{finding.evidence}</p>
+                <small>
+                  Source row {finding.row_number ?? "not available"} /{" "}
+                  {finding.finding_id}
+                </small>
+              </article>
+            ))}
+          </details>
+          <details className="model-disclosure">
+            <summary>
+              <Sparkles size={15} />
+              Supporting model evidence{" "}
+              <span>
+                {modelMembers.length
+                  ? `${modelMembers.length} flagged payments`
+                  : "No flagged payments"}
+              </span>
+            </summary>
+            <p>
+              Scores describe relative unusualness within this file, not fraud
+              probability. Each payment keeps its own model score; there is no
+              combined case model score.
+            </p>
+            {item.members.map((member) => (
+              <div className="member-model" key={member.id}>
+                <strong>{text(member.transaction.transaction_id)}</strong>
+                <span>
+                  {member.model.decision === null
+                    ? "Not run"
+                    : `${member.model.score} / 100`}
+                </span>
+                <p>{member.model.context}</p>
+              </div>
+            ))}
+          </details>
+        </section>
+        <section className="investigation-section case-review-section">
+          <h3>Review this case</h3>
+          <p className="case-muted">
+            Reviewed records your work; it does not confirm fraud or loss.
+            Decisions and notes last for this session only.
+          </p>
+          <p>
+            Current status: <strong>{statusLabels[status]}</strong>
+          </p>
+          <label className="case-note-label">
+            Review note
+            <textarea
+              aria-label="Review note"
+              rows={4}
+              value={draft}
+              onChange={(event) => onDraft(event.target.value)}
+              placeholder="Record your evidence, explanation or follow-up question."
+            />
+          </label>
+          <div className="case-note-actions">
+            <span role="status">
+              {draft !== (decision?.note ?? "")
+                ? "Unsaved note - kept while you navigate"
+                : decision?.note
+                  ? "Note saved for this session"
+                  : "Included in review exports when saved"}
+            </span>
+            <button
+              className="button small"
+              onClick={onNote}
+              disabled={draft === (decision?.note ?? "")}
+            >
+              <Check size={14} />
+              Save note
+            </button>
+          </div>
+          {canUndo && (
+            <button className="case-text-button" onClick={onUndo}>
+              <Undo2 size={14} />
+              Undo last review action
+            </button>
+          )}
+        </section>
+      </div>
+    </section>
   );
 }

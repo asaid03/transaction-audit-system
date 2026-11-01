@@ -1,28 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  ArrowUpRight,
-  Check,
-  Circle,
-  Sparkles,
-} from "lucide-react";
-import { caseTitle, date, money, statusLabels, text } from "./format";
-import type { Decision, ReviewCase, Scope } from "./types";
+import { ArrowUpRight, Check, Search, Sparkles } from "lucide-react";
+import { date, money, statusLabels, text } from "./format";
+import type { Decision, ReviewCase } from "./types";
 
-export type SortKey = "priority" | "date" | "amount" | "payee";
 export function Priority({ item }: { item: ReviewCase }) {
   return item.findings.length ? (
-    <span className={`priority ${item.audit_band}`}>
-      <i aria-hidden="true" />
-      <span>{item.audit_band}</span>
-      <b>{item.audit_score}</b>
+    <span className={`case-priority ${item.audit_band}`}>
+      <i />
+      {item.audit_band}
     </span>
   ) : (
-    <span className="model-only">
-      <Sparkles size={13} />
+    <span className="case-priority model">
+      <Sparkles size={12} />
       Model only
     </span>
   );
@@ -31,266 +21,137 @@ export function Priority({ item }: { item: ReviewCase }) {
 export function Queue({
   rows,
   decisions,
-  onSelect,
   selected,
-  sort,
-  direction,
-  onSort,
-  scope,
+  onSelect,
+  compact,
 }: {
   rows: ReviewCase[];
   decisions: Record<string, Decision>;
-  onSelect: (id: string) => void;
   selected: string | null;
-  sort: SortKey;
-  direction: number;
-  onSort: (key: SortKey) => void;
-  scope: Scope;
+  onSelect: (id: string) => void;
+  compact: boolean;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
-  const [mobile, setMobile] = useState(window.innerWidth < 760);
-  useEffect(() => {
-    const query = window.matchMedia("(max-width: 759px)");
-    const update = () => setMobile(query.matches);
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
   const virtual = useVirtualizer({
     count: rows.length,
     getScrollElement: () => viewport.current,
-    estimateSize: () => 66,
-    overscan: 10,
+    estimateSize: () => (compact ? 136 : 72),
+    overscan: 6,
+    getItemKey: (index) => rows[index].id,
   });
-  const items = virtual.getVirtualItems();
-  const first = items[0]?.start ?? 0;
-  const last = virtual.getTotalSize() - (items.at(-1)?.end ?? 0);
-  const sortLabel = (key: SortKey, label: string) => (
-    <button onClick={() => onSort(key)}>
-      {label}
-      {sort === key ? (
-        direction === -1 ? (
-          <ArrowDown size={12} />
-        ) : (
-          <ArrowUp size={12} />
-        )
-      ) : (
-        <ArrowUpDown size={12} />
-      )}
-    </button>
-  );
-
+  useEffect(() => {
+    virtual.measure();
+    const index = rows.findIndex((row) => row.id === selected);
+    if (index >= 0) virtual.scrollToIndex(index, { align: "auto" });
+  }, [compact, selected]);
   return (
-    <div className="table-shell">
-      <div className="queue-viewport" ref={viewport}>
-        <table className="queue-table" aria-label="Transactions needing review">
-          <colgroup>
-            <col className="col-priority" />
-            <col className="col-payment" />
-            {!mobile && (
-              <>
-                <col className="col-trigger" />
-                <col className="col-date" />
-              </>
-            )}
-            <col className="col-amount" />
-            {!mobile && (
-              <>
-                <col className="col-status" />
-                <col className="col-arrow" />
-              </>
-            )}
-          </colgroup>
-          <thead>
-            <tr>
-              <th
-                scope="col"
-                aria-sort={
-                  sort === "priority"
-                    ? direction === -1
-                      ? "descending"
-                      : "ascending"
-                    : "none"
-                }
-              >
-                {sortLabel(
-                  "priority",
-                  scope === "model" ? "Model score" : "Priority",
-                )}
-              </th>
-              <th
-                scope="col"
-                aria-sort={
-                  sort === "payee"
-                    ? direction === -1
-                      ? "descending"
-                      : "ascending"
-                    : "none"
-                }
-              >
-                {sortLabel("payee", mobile ? "Payment" : "Payment / payee")}
-              </th>
-              {!mobile && (
-                <>
-                  <th scope="col">Reason for review</th>
-                  <th
-                    scope="col"
-                    aria-sort={
-                      sort === "date"
-                        ? direction === -1
-                          ? "descending"
-                          : "ascending"
-                        : "none"
-                    }
-                  >
-                    {sortLabel("date", "Date")}
-                  </th>
-                </>
-              )}
-              <th
-                className="align-right"
-                scope="col"
-                aria-sort={
-                  sort === "amount"
-                    ? direction === -1
-                      ? "descending"
-                      : "ascending"
-                    : "none"
-                }
-              >
-                {sortLabel("amount", "Amount")}
-              </th>
-              {!mobile && (
-                <>
-                  <th scope="col">Status</th>
-                  <th aria-label="Open case" />
-                </>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {first > 0 && (
-              <tr aria-hidden="true">
-                <td
-                  colSpan={mobile ? 3 : 7}
-                  style={{ height: first, padding: 0, border: 0 }}
-                />
-              </tr>
-            )}
-            {items.map((virtualRow) => {
-              const item = rows[virtualRow.index];
+    <section
+      className={`case-queue ${compact ? "compact" : ""}`}
+      aria-label="Review cases"
+    >
+      <div className="case-queue-heading">
+        <h2>{compact ? "Cases" : "Review queue"}</h2>
+        <span>{rows.length.toLocaleString()} cases</span>
+      </div>
+      {!compact && (
+        <div className="queue-columns" aria-hidden="true">
+          <span>Priority</span>
+          <span>Payee / payment</span>
+          <span>Reason for review</span>
+          <span>Invoice / date</span>
+          <span>Payments</span>
+          <span>Value under review</span>
+          <span>Status</span>
+          <span />
+        </div>
+      )}
+      <div
+        ref={viewport}
+        className="case-queue-scroll"
+        tabIndex={0}
+        aria-label="Scrollable case queue"
+      >
+        {rows.length ? (
+          <div style={{ height: virtual.getTotalSize(), position: "relative" }}>
+            {virtual.getVirtualItems().map((entry) => {
+              const item = rows[entry.index];
               const status = decisions[item.id]?.status ?? "needs_review";
-              const done = status === "reviewed" || status === "dismissed";
+              const dates = item.members
+                .map((member) => member.transaction.transaction_date)
+                .filter(Boolean)
+                .map(String)
+                .sort();
               return (
-                <tr
+                <button
                   key={item.id}
-                  className={`${selected === item.id ? "selected" : ""} ${done ? "completed" : ""}`}
+                  id={`open-${item.id}`}
+                  className={`case-queue-row ${selected === item.id ? "selected" : ""}`}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    height: entry.size,
+                    transform: `translateY(${entry.start}px)`,
+                  }}
+                  aria-label={`Investigate ${item.title} for ${text(item.transaction.counterparty)} ${text(item.transaction.invoice_reference)}, ${item.members.length} payments`}
+                  aria-current={selected === item.id ? "true" : undefined}
                   onClick={() => onSelect(item.id)}
                 >
-                  <td>
-                    {scope === "model" ? (
-                      <span className={`model-score ${item.model.band}`}>
-                        <Sparkles size={13} />
-                        <b>{item.model.score}</b>
-                        <span>/100</span>
-                      </span>
-                    ) : (
-                      <Priority item={item} />
+                  <Priority item={item} />
+                  <span className="case-row-title">
+                    <strong>{text(item.transaction.counterparty)}</strong>
+                    <span className="compact-case-reason">{item.title}</span>
+                  </span>
+                  <span className="case-row-reason">{item.title}</span>
+                  <span className="case-row-context">
+                    <span className="mono">
+                      {item.transaction.invoice_reference
+                        ? text(item.transaction.invoice_reference)
+                        : item.members.length
+                          ? text(item.members[0].transaction.transaction_id) +
+                            (item.members.length > 1
+                              ? ` +${item.members.length - 1}`
+                              : "")
+                          : "File-level issue"}
+                    </span>
+                    <small>
+                      {dates.length ? date(dates[0]) : "No usable payment date"}
+                      {dates.length > 1 && dates[dates.length - 1] !== dates[0]
+                        ? ` to ${date(dates[dates.length - 1])}`
+                        : ""}
+                    </small>
+                  </span>
+                  <span className="case-payment-count">
+                    {item.members.length}{" "}
+                    {item.members.length === 1 ? "payment" : "payments"}
+                  </span>
+                  <span className="case-row-money">
+                    {item.totals.length === 1
+                      ? money(item.totals[0].amount, item.totals[0].currency)
+                      : item.totals.length
+                        ? "Multiple currencies"
+                        : "File-level issue"}
+                  </span>
+                  <span className="case-row-status">
+                    {["reviewed", "dismissed"].includes(status) && (
+                      <Check size={12} />
                     )}
-                  </td>
-                  <td>
-                    <button
-                      className="payment-link"
-                      title={text(item.transaction.counterparty)}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onSelect(item.id);
-                      }}
-                      aria-label={`Investigate ${text(item.transaction.transaction_id)}`}
-                    >
-                      <span>{text(item.transaction.counterparty)}</span>
-                      <small className="mono">
-                        {text(item.transaction.transaction_id)}
-                      </small>
-                      <small className="mobile-trigger">
-                        {caseTitle(item)}
-                      </small>
-                    </button>
-                  </td>
-                  {!mobile && (
-                    <>
-                      <td>
-                        <span className="trigger-title" title={caseTitle(item)}>
-                          {scope === "model" && !item.findings.length
-                            ? "Unusual payment pattern"
-                            : caseTitle(item)}
-                        </span>
-                        <span className="trigger-sub">
-                          {item.findings.length > 1
-                            ? `${item.findings.length} audit findings`
-                            : item.findings.length
-                              ? "Audit check"
-                              : "Model signal"}
-                          {item.model.flagged && item.findings.length > 0
-                            ? ` · Model ${item.model.score}`
-                            : ""}
-                        </span>
-                      </td>
-                      <td className="date-cell">
-                        {date(item.transaction.transaction_date, {
-                          day: "2-digit",
-                          month: "short",
-                        })}
-                      </td>
-                    </>
-                  )}
-                  <td className="amount-cell">
-                    <strong
-                      title={money(
-                        item.transaction.amount,
-                        item.transaction.currency,
-                      )}
-                    >
-                      {money(
-                        item.transaction.amount,
-                        item.transaction.currency,
-                      )}
-                    </strong>
-                    <small>{text(item.transaction.currency)}</small>
-                  </td>
-                  {!mobile && (
-                    <>
-                      <td>
-                        <span className={`review-status ${status}`}>
-                          {done ? <Check size={12} /> : <Circle size={9} />}{" "}
-                          {statusLabels[status]}
-                        </span>
-                      </td>
-                      <td className="row-arrow">
-                        <ArrowUpRight size={16} />
-                      </td>
-                    </>
-                  )}
-                </tr>
+                    {statusLabels[status]}
+                  </span>
+                  <ArrowUpRight className="case-row-arrow" size={15} />
+                </button>
               );
             })}
-            {last > 0 && (
-              <tr aria-hidden="true">
-                <td
-                  colSpan={mobile ? 3 : 7}
-                  style={{ height: last, padding: 0, border: 0 }}
-                />
-              </tr>
-            )}
-          </tbody>
-        </table>
-        {!rows.length && (
-          <div className="empty-results">
-            <Check size={24} />
-            <h3>No payments in this view</h3>
-            <p>Change your filters to see other review cases.</p>
+          </div>
+        ) : (
+          <div className="case-empty">
+            <Search size={24} />
+            <h3>No matching cases</h3>
+            <p>Try a different search or clear the filters.</p>
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }

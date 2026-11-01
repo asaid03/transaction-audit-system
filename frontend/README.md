@@ -1,6 +1,6 @@
 # Investigation Workspace
 
-The React investigation queue and case panel use the Python audit engine through
+The React case queue and investigation workspace use the Python audit engine through
 the FastAPI service.
 
 ## Run locally
@@ -28,14 +28,14 @@ Mapping a column twice is rejected. Files are processed in memory.
 ## Design
 
 - Neutral light/dark surfaces, blue for actions, semantic priority colours.
-- System text, monospace IDs, tabular money, compact sortable virtualised table.
-- One row per flagged transaction. Audit priority and model score stay separate.
-- Actual findings link to original payments and source row numbers.
-- Radix provides modal focus handling, Escape, and accessible dialog names.
-- Motion provides spring panels; mobile drag projects release velocity and uses
-  elastic bounds. Reduced motion crossfades panels instead of sliding them.
-- Review decisions, notes and timestamped actions are session-only. Undo reverses
-  the last action. CSV export contains the current filtered review with decisions.
+- System text, monospace IDs, tabular money and a virtualised case navigator.
+- Desktop overview uses balanced payee/payment, review reason and invoice/date columns, 72px rows, readable 14px primary text and 40px search/filter controls. The compact investigation navigator uses taller rows rather than shrinking the text.
+- One case combines compatible rule-linked payments and preserves all original findings. Separate investigations can share a payment without sharing decisions.
+- A nonmodal investigation area shows the calculation, every linked payment, source rows, uncertainty and next action. Focus mode hides the navigator; narrower windows use a full-width investigation.
+- Search matches every member transaction and original invoice variant. Filters select whole cases, never subsets of evidence. Sort by priority, value (within currency), date or payee.
+- Case decisions and saved notes are session-only. Draft notes survive navigation. Undo reverses the last review action. Reviewing a case does not immediately hide its evidence.
+- Export case summaries or all member payments for filtered cases. Summaries include supported invoice calculations once per case; member exports keep payment dates, source rows and case identity. Saved decisions and notes are included. Overlapping cases may repeat a payment; do not sum these rows as global financial exposure.
+- Radix retains modal focus handling for upload/settings only. Main-task navigation uses normal document focus rather than a modal focus trap.
 - The model cutoff filters existing flagged model scores; it does not retrain or
   alter deterministic checks. Scores are not fraud probabilities.
 
@@ -54,9 +54,19 @@ Reference-file upload and dedicated remaining screens await design feedback.
 
 `mapping` maps canonical field names to source column names. `AuditRun` includes
 filename, source row count, applied mapping, cleaning steps, all transactions and
-flagged cases. Each case contains a source row key, source fields, audit score,
-audit band, findings with evidence/related IDs, and an independent `model` object
-with score, flag, decision and contextual drivers. No score is recomputed in JS.
+flagged payment records (`cases`, retained for compatibility), plus `review_cases`.
+Review cases contain member payment records, original findings, separate currency
+totals, optional supported invoice calculations, unresolved links, and related
+case IDs. Priority inherits the strongest existing finding; it is not a new score.
+Each member keeps its original audit and model output. The case-level `model`
+field references the highest flagged member's existing output for filtering; the
+UI displays individual model evidence, not a combined model score.
+
+Case grouping is pure Python in `transaction_audit/cases.py`. Existing duplicate
+and split links establish membership, with vendor, currency and invoice safeguards.
+Similar-looking rows are not automatically added. Concentration and balance checks
+remain separate investigations. Invoice comparisons require consistent usable
+totals; potential excess is not a confirmed loss. No score is recomputed in JS.
 
 `GET /docs` on port 8001 provides the generated endpoint documentation. Review
 storage and authentication are not added in this slice. Development servers bind

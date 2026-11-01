@@ -23,7 +23,9 @@ available in the Python engine and CLI; they are not yet exposed in the web app.
 - Suggests possible vendor matches when exact vendor matching fails but a high-confidence fuzzy name match exists.
 - Adds deterministic review-priority scores, bands, and drivers for exception review.
 - Adds a separate transaction-level ML/anomaly review output whose score comes from `scikit-learn` Isolation Forest rather than deterministic audit findings.
-- Shows a review queue with evidence, filters, session decisions, and CSV export.
+- Groups compatible rule-linked payments into review cases without changing detection or ML scores.
+- Shows a case queue and nonmodal investigation workspace with invoice calculations, all linked payments, source rows, uncertainty, and next actions.
+- Preserves search/filter context and case note drafts during navigation. Review decisions and saved notes are session-only, with Undo and case/member CSV exports.
 - Records skipped checks when optional reference files are missing.
 - Produces reviewer-friendly audit workbooks with findings, risk levels, recommended actions, and raw evidence.
 
