@@ -132,7 +132,10 @@ test("one invoice case opens both payments, exact calculation and original evide
       .getByRole("table", { name: "Payments in this case" })
       .getByText("PAY-B", { exact: true }),
   ).toBeVisible();
-  await detail.getByRole("button", { name: "View source" }).first().click();
+  await detail
+    .getByRole("button", { name: "View imported row" })
+    .first()
+    .click();
   await expect(detail.locator(".member-source")).toContainText("Source row 2");
   await detail.getByText("All original audit findings (2)").click();
   await expect(detail.locator(".original-finding")).toHaveCount(2);
@@ -289,6 +292,40 @@ test("manual upload mapping remains available", async ({ page }) => {
   await expect(page.getByText("Uploaded file", { exact: true })).toBeVisible();
 });
 
+test("reconciled instalments are low priority and missing currency is not invented", async ({
+  page,
+}) => {
+  const contents =
+    "transaction_id,transaction_date,account_id,counterparty,currency,amount,invoice_reference,invoice_amount\n" +
+    "INST-A,2025-06-01,AP,Supplier A,GBP,1000,INV-1,2500\n" +
+    "INST-B,2025-06-08,AP,Supplier A,GBP,1500,INV-1,2500\n" +
+    "NO-CCY,2025-06-10,AP,Supplier B,,700,INV-2,700";
+  await uploadCaseFile(page, contents, 3);
+  await page.getByLabel("Search cases").fill("INST-B");
+  await page.getByRole("button", { name: /^Investigate / }).click();
+  const detail = page.getByRole("region", { name: "Case investigation" });
+  await expect(detail.locator(".case-priority")).toContainText("low");
+  await expect(
+    detail.getByRole("heading", {
+      name: "Invoice settled in instalments",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: "test-results/case-instalments-low.png",
+    fullPage: true,
+  });
+  await detail.getByRole("button", { name: "Back to cases" }).click();
+  await page.getByLabel("Search cases").fill("NO-CCY");
+  await page.getByRole("button", { name: /^Investigate / }).click();
+  await expect(
+    detail.getByRole("table", { name: "Payments in this case" }),
+  ).not.toContainText("£700");
+  await expect(
+    detail.getByRole("table", { name: "Payments in this case" }),
+  ).toContainText("Currency not supplied");
+});
+
 test("large linked invoice keeps every payment instead of a first-six preview", async ({
   page,
 }) => {
@@ -308,6 +345,31 @@ test("large linked invoice keeps every payment instead of a first-six preview", 
   await expect(table.getByRole("row")).toHaveCount(101);
   await expect(table.getByText("PART-99", { exact: true })).toBeAttached();
   await expect(page.locator(".case-calculation")).toContainText("£100.00");
+});
+
+test("case headline and explanation follow the strongest finding", async ({
+  page,
+}) => {
+  const contents =
+    "transaction_id,transaction_date,account_id,counterparty,currency,amount,invoice_reference,invoice_amount\n" +
+    "BAD-DATE,bad-date,AP,Supplier A,GBP,1000,INV-1,2500\n" +
+    "OTHER,2025-06-08,AP,Supplier A,GBP,1500,INV-1,2500";
+  await uploadCaseFile(page, contents, 2);
+  await page.getByRole("button", { name: /^Investigate / }).click();
+  const detail = page.getByRole("region", { name: "Case investigation" });
+  await expect(
+    detail.getByRole("heading", {
+      name: "Transaction date could not be parsed",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(detail.locator(".case-priority")).toContainText("high");
+  await expect(detail.locator(".explanation-grid")).toContainText(
+    "correct audit period",
+  );
+  await expect(detail.locator(".case-heading-meta")).toContainText(
+    "Data correction",
+  );
 });
 
 test("synthetic 10k-case presentation stays virtualised and searchable", async ({

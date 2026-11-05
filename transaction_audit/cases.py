@@ -3,20 +3,90 @@
 from collections import defaultdict
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
+from typing import TypedDict
 
-from transaction_audit.rules import _invoice_match_key
+from transaction_audit.rules import invoice_match_key
+
+
+class InvoiceSummary(TypedDict):
+    currency: str
+    invoice: str
+    paid: str
+    excess: str
+    remaining: str
+
+
+class CaseFinding(TypedDict, total=False):
+    finding_id: str
+    finding: str
+    technical_issue_type: str
+    evidence: str
+    why_it_matters: str
+    recommended_action: str
+    review_priority_band: str
+    review_priority_score: int
+    related_record_id: str
+    related_dataset: str | None
+    row_number: int | None
+
+
+class ModelOutput(TypedDict):
+    score: int
+    band: str
+    flagged: bool
+    decision: float | None
+    context: str
+
+
+class PaymentRecord(TypedDict):
+    id: str
+    row_number: int
+    transaction: dict[str, str | int | float | bool | None]
+    audit_band: str
+    audit_score: int
+    audit_drivers: str
+    findings: list[CaseFinding]
+    model: ModelOutput
+
+
+class CurrencyTotal(TypedDict):
+    currency: str
+    amount: str | None
+
+
+class ReviewCase(PaymentRecord):
+    kind: str
+    title: str
+    category: str
+    primary_finding: CaseFinding | None
+    members: list[PaymentRecord]
+    context_members: list[PaymentRecord]
+    unresolved_links: list[str]
+    related_case_ids: list[str]
+    invoice_summary: InvoiceSummary | None
+    totals: list[CurrencyTotal]
 
 
 PAYMENT_RELATIONSHIPS = {'possible_duplicate_payment', 'possible_split_payment'}
 SEPARATE_FINDINGS = {'duplicate_transaction_id', 'vendor_concentration', 'balance_movement_mismatch'}
 BANDS = {'low': 0, 'medium': 1, 'high': 2}
+CASE_CATEGORIES = {
+    'possible_split_payment': 'Settlement information',
+    'missing_invoice_reference': 'Documentation check',
+    'unsupported_currency': 'Scope check',
+    'invalid_date': 'Data correction',
+    'invalid_amount': 'Data correction',
+    'missing_value': 'Data correction',
+    'missing_column': 'Data correction',
+    'duplicate_transaction_id': 'Data consistency check',
+}
 
 
 def _text(value: object) -> str:
     return '' if value is None else str(value).strip()
 
 
-def _identity(record: dict) -> tuple[str, str]:
+def _identity(record: PaymentRecord) -> tuple[str, str]:
     transaction = record['transaction']
     vendor = _text(transaction.get('vendor_id'))
     name = ' '.join(_text(transaction.get('counterparty')).lower().split())
@@ -31,11 +101,11 @@ def _decimal(value: object) -> Decimal | None:
         return None
 
 
-def _invoice_summary(members: list[dict], tolerance: Decimal) -> dict | None:
+def _invoice_summary(members: list[PaymentRecord], tolerance: Decimal) -> InvoiceSummary | None:
     if len(members) < 2:
         return None
     transactions = [member['transaction'] for member in members]
-    keys = {_invoice_match_key(t.get('invoice_reference')) for t in transactions}
+    keys = {invoice_match_key(t.get('invoice_reference')) for t in transactions}
     if None in keys or len(keys) != 1 or len({_identity(m) for m in members}) != 1:
         return None
     currencies = {_text(t.get('currency')) for t in transactions}
@@ -57,17 +127,38 @@ def _invoice_summary(members: list[dict], tolerance: Decimal) -> dict | None:
     }
 
 
-def _case(kind, members, findings, unresolved=(), context=(), tolerance=Decimal('0.01')):
+def _case(
+    kind: str,
+    members: list[PaymentRecord],
+    findings: list[CaseFinding],
+    unresolved=(),
+    context=(),
+    tolerance: Decimal = Decimal('0.01'),
+) -> ReviewCase:
     members = sorted(members, key=lambda item: item['row_number'])
-    findings = sorted({f['finding_id']: f for f in findings}.values(), key=lambda f: str(f['finding_id']))
-    representative = max(members, key=lambda m: (BANDS[m['audit_band']], m['audit_score'], -m['row_number'])) if members else None
-    strongest = max(findings, key=lambda f: (BANDS.get(str(f.get('review_priority_band', 'low')).lower(), 0), f.get('review_priority_score', 0)), default=None)
+    findings = sorted(
+        {f['finding_id']: f for f in findings}.values(), key=lambda f: str(f['finding_id'])
+    )
+    representative = max(
+        members,
+        key=lambda m: (BANDS[m['audit_band']], m['audit_score'], -m['row_number']),
+        default=None,
+    )
+    strongest = max(
+        findings,
+        key=lambda f: (
+            BANDS.get(str(f.get('review_priority_band', 'low')).lower(), 0),
+            f.get('review_priority_score', 0),
+        ),
+        default=None,
+    )
     summary = _invoice_summary(members, tolerance) if kind == 'payments' and not unresolved else None
     title = strongest['finding'] if strongest else 'Unusual payment pattern'
-    if summary and Decimal(summary['excess']) > 0:
+    primary_type = strongest.get('technical_issue_type') if strongest else None
+    if summary and Decimal(summary['excess']) > 0 and primary_type == 'possible_duplicate_payment':
         title = 'Possible invoice overpayment'
-    elif any(f['technical_issue_type'] == 'possible_split_payment' for f in findings):
-        title = 'Invoice paid in parts'
+    elif primary_type == 'possible_split_payment':
+        title = 'Invoice settled in instalments'
     totals = defaultdict(lambda: Decimal(0))
     invalid = set()
     for member in members:
@@ -83,15 +174,22 @@ def _case(kind, members, findings, unresolved=(), context=(), tolerance=Decimal(
     signature = kind + ':' + ','.join(m['id'] for m in members)
     if not members:
         signature += ':' + ','.join(f['finding_id'] for f in findings)
-    model_member = max(members, key=lambda m: (bool(m['model']['flagged']), m['model']['score']), default=None)
+    model_member = max(
+        members,
+        key=lambda m: (bool(m['model']['flagged']), m['model']['score']),
+        default=None,
+    )
     return {
         'id': 'case-' + sha256(signature.encode()).hexdigest()[:16],
-        'kind': kind, 'title': title, 'row_number': members[0]['row_number'] if members else 0,
+        'kind': kind, 'title': title,
+        'category': CASE_CATEGORIES.get(primary_type, 'Review prompt') if strongest else 'Supporting model signal',
+        'row_number': members[0]['row_number'] if members else 0,
         'transaction': representative['transaction'] if representative else {},
         'audit_band': str(strongest.get('review_priority_band', 'low')).lower() if strongest else 'low',
         'audit_score': strongest.get('review_priority_score', 0) if strongest else 0,
         'audit_drivers': 'Highest existing finding priority; original scores retained per payment.',
-        'findings': findings, 'members': members, 'context_members': list(context),
+        'findings': findings, 'primary_finding': strongest, 'related_case_ids': [],
+        'members': members, 'context_members': list(context),
         'unresolved_links': sorted(set(unresolved)), 'invoice_summary': summary,
         'totals': [{'currency': c, 'amount': None if c in invalid else str(v)} for c, v in sorted(totals.items())],
         'model': model_member['model'] if model_member else {
@@ -99,8 +197,11 @@ def _case(kind, members, findings, unresolved=(), context=(), tolerance=Decimal(
     }
 
 
-def build_review_cases(transactions: list[dict], unlinked_findings: list[dict] | None = None,
-                       invoice_tolerance: float = 0.01) -> list[dict]:
+def build_review_cases(
+    transactions: list[PaymentRecord],
+    unlinked_findings: list[CaseFinding] | None = None,
+    invoice_tolerance: float = 0.01,
+) -> list[ReviewCase]:
     """Combine compatible rule-linked rows; keep broad/context relationships separate.
 
     Source row IDs, not business transaction IDs, identify members. Reciprocal and
@@ -113,10 +214,10 @@ def build_review_cases(transactions: list[dict], unlinked_findings: list[dict] |
         if transaction_id:
             by_id[transaction_id].append(record)
     parent = {r['id']: r['id'] for r in ordered}
-    invoice_keys = {r['id']: {_invoice_match_key(r['transaction'].get('invoice_reference'))} - {None} for r in ordered}
+    invoice_keys = {r['id']: {invoice_match_key(r['transaction'].get('invoice_reference'))} - {None} for r in ordered}
     unresolved = defaultdict(set)
 
-    def root(key):
+    def root(key: str) -> str:
         while key != parent[key]:
             parent[key] = parent[parent[key]]
             key = parent[key]

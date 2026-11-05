@@ -97,7 +97,7 @@ class AnomalyTests(unittest.TestCase):
         self.assertTrue(
             flagged["ml_anomaly_drivers"]
             .astype(str)
-            .str.contains("highest 5%", regex=False)
+            .str.contains("amount-context threshold", regex=False)
             .all()
         )
 

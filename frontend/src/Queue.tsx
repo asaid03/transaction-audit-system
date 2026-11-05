@@ -6,7 +6,11 @@ import type { Decision, ReviewCase } from "./types";
 
 export function Priority({ item }: { item: ReviewCase }) {
   return item.findings.length ? (
-    <span className={`case-priority ${item.audit_band}`}>
+    <span
+      className={`case-priority ${item.audit_band}`}
+      title="Review priority, not likelihood of wrongdoing"
+      aria-label={`${item.audit_band} review priority`}
+    >
       <i />
       {item.audit_band}
     </span>
@@ -51,11 +55,13 @@ export function Queue({
     >
       <div className="case-queue-heading">
         <h2>{compact ? "Cases" : "Review queue"}</h2>
-        <span>{rows.length.toLocaleString()} cases</span>
+        <span>
+          {rows.length.toLocaleString()} {rows.length === 1 ? "case" : "cases"}
+        </span>
       </div>
       {!compact && (
         <div className="queue-columns" aria-hidden="true">
-          <span>Priority</span>
+          <span>Review priority</span>
           <span>Payee / payment</span>
           <span>Reason for review</span>
           <span>Invoice / date</span>

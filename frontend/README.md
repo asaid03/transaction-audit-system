@@ -31,6 +31,7 @@ Mapping a column twice is rejected. Files are processed in memory.
 - System text, monospace IDs, tabular money and a virtualised case navigator.
 - Desktop overview uses balanced payee/payment, review reason and invoice/date columns, 72px rows, readable 14px primary text and 40px search/filter controls. The compact investigation navigator uses taller rows rather than shrinking the text.
 - One case combines compatible rule-linked payments and preserves all original findings. Separate investigations can share a payment without sharing decisions.
+- Cases identify their strongest finding explicitly so titles and explanations agree. Labels distinguish data corrections, documentation checks and settlement information; reconciled instalments alone have low review priority. Queue filtering/sorting lives in the pure `reviewQueue.ts` helper rather than the page component.
 - A nonmodal investigation area shows the calculation, every linked payment, source rows, uncertainty and next action. Focus mode hides the navigator; narrower windows use a full-width investigation.
 - Search matches every member transaction and original invoice variant. Filters select whole cases, never subsets of evidence. Sort by priority, value (within currency), date or payee.
 - Case decisions and saved notes are session-only. Draft notes survive navigation. Undo reverses the last review action. Reviewing a case does not immediately hide its evidence.

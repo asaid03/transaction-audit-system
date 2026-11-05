@@ -125,7 +125,7 @@ class AuditTests(unittest.TestCase):
         findings = review_findings_dataframe(issues)
 
         self.assertEqual("High", findings.loc[0, "priority"])
-        self.assertEqual("Payment references an unapproved or missing vendor", findings.loc[0, "finding"])
+        self.assertEqual("Vendor not found in the uploaded vendor file", findings.loc[0, "finding"])
 
     def test_new_population_and_vendor_findings_have_reviewer_guidance(self):
         issues = pd.DataFrame(
@@ -184,7 +184,7 @@ class AuditTests(unittest.TestCase):
                 "Running balance does not reconcile",
                 "High concentration of transaction value with one payee",
                 "Vendor ID and payee name disagree",
-                "One invoice may have been divided across payments",
+                "Invoice settled in instalments",
             },
             set(findings["finding"]),
         )

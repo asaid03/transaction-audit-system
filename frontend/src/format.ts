@@ -29,19 +29,18 @@ export const money = (
 ) => {
   if (amount === null || amount === undefined || amount === "") return "\u2014";
   if (!Number.isFinite(Number(amount))) return String(amount);
+  if (!currency || currency === "Unknown currency")
+    return `${new Intl.NumberFormat("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(amount))} (Currency not supplied)`;
   try {
     return new Intl.NumberFormat("en-GB", {
       style: "currency",
-      currency: String(currency || "GBP"),
+      currency: String(currency),
       currencyDisplay: "narrowSymbol",
     }).format(Number(amount));
   } catch {
     return `${Number(amount).toFixed(2)} ${text(currency)}`;
   }
 };
-export function caseTitle(item: ReviewCase) {
-  return item.title;
-}
 export const humanField = (field: string) =>
   ({
     transaction_id: "Transaction ID",
@@ -63,6 +62,7 @@ export function exportCsv(
   const fields = [
     "case_id",
     "case_title",
+    "review_category",
     "payment_count",
     "case_invoice_amount",
     "case_paid_total",
@@ -99,6 +99,7 @@ export function exportCsv(
         (member) => [
           item.id,
           item.title,
+          item.category,
           item.members.length,
           summary ? item.invoice_summary?.invoice : "",
           summary ? item.invoice_summary?.paid : "",

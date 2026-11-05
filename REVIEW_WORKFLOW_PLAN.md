@@ -464,3 +464,31 @@ previously identified flags on approved advances, high-value controls and schedu
 instalments remain. The automatic High priority for reconciled instalments and the
 other wording/scoring concerns identified in review are deliberately not changed
 by this presentation branch. They need a separately tested correction.
+
+### Corrective Pass - 2026-11-05
+
+The uncommitted follow-up now addresses the focused code/clarity review:
+
+- Instalment observations contribute 10 low-priority points, rather than 75 high
+  points. Higher-priority coexisting findings still take precedence. No rule
+  observations are suppressed and no supplied approval flag is treated as verified.
+- Cases expose a typed primary finding shared by their title and explanation,
+  plus a presentation category such as Data correction or Settlement information.
+- Blank-reference, uploaded-vendor and configured-currency wording no longer
+  implies missing documents, unapproved vendors or a verified audit policy.
+- Imported-row labels explain normalisation; unknown currency no longer falls
+  back to GBP. Exports include the presentation category.
+- Queue filtering/sorting moved into a pure frontend helper; an unused title
+  helper and about 1,850 obsolete stylesheet lines were removed. Shared modal,
+  upload and accessibility styles remain. Case records have TypedDict contracts
+  and share a public invoice-key helper with the detection code.
+- ML training/features are unchanged. Context-threshold wording no longer
+  promises an exact top-5% classification, and the UI explicitly states that
+  context notes are not feature-attribution measurements or currency conversions.
+- Verification: 184 Python tests and 13 subtests; 12 browser scenarios; production
+  build. External ZIP still produces 70 findings and 45 cases, including 10
+  instalment-only cases now Low, with all findings retained and 10 model flags.
+
+Approval/schedule-aware evaluation, currency-aware ML and representative-user
+testing remain separate work. This correction is not a claim that every earlier
+product limitation has been solved. Nothing is merged or deployed by this pass.

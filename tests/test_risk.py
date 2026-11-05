@@ -63,7 +63,7 @@ class RiskTests(unittest.TestCase):
 
         self.assertEqual(100, review.loc[0, "review_priority_score"])
         self.assertEqual("medium", review.loc[0, "review_priority_band"])
-        self.assertIn("Currency is not in the expected list", review.loc[0, "review_priority_drivers"])
+        self.assertIn("Currency is outside the configured list", review.loc[0, "review_priority_drivers"])
         self.assertIn("Payment is above the review limit", review.loc[0, "review_priority_drivers"])
 
     def test_normal_transaction_remains_low_priority(self):
@@ -84,7 +84,7 @@ class RiskTests(unittest.TestCase):
         self.assertEqual([0, 0], review["review_priority_score"].tolist())
         self.assertEqual(["low", "low"], review["review_priority_band"].tolist())
 
-    def test_possible_split_payment_is_explainable_high_priority(self):
+    def test_reconciled_instalments_are_informational_low_priority(self):
         dataframe = pd.DataFrame(
             {
                 "transaction_id": ["TXN-001", "TXN-002"],
@@ -101,15 +101,27 @@ class RiskTests(unittest.TestCase):
 
         review = score_transactions(result.transactions, result.issues_dataframe())
 
-        self.assertEqual([75, 75], review["review_priority_score"].tolist())
-        self.assertEqual(["high", "high"], review["review_priority_band"].tolist())
+        self.assertEqual([10, 10], review["review_priority_score"].tolist())
+        self.assertEqual(["low", "low"], review["review_priority_band"].tolist())
         self.assertEqual(
             [
-                "Possible split payment with TXN-002",
-                "Possible split payment with TXN-001",
+                "Invoice settled in instalments with TXN-002",
+                "Invoice settled in instalments with TXN-001",
             ],
             review["review_priority_drivers"].tolist(),
         )
+
+    def test_instalment_does_not_downgrade_an_invalid_date(self):
+        dataframe = pd.DataFrame({
+            "transaction_id": ["A", "B"], "transaction_date": ["bad-date", "2025-06-01"],
+            "account_id": ["AP", "AP"], "counterparty": ["Supplier A", "Supplier A"],
+            "currency": ["GBP", "GBP"], "amount": ["1000", "1500"],
+            "invoice_reference": ["INV-1", "INV-1"], "invoice_amount": ["2500", "2500"],
+        })
+        result = validate_transactions(dataframe)
+        review = score_transactions(result.transactions, result.issues_dataframe())
+        self.assertEqual(["high", "low"], review["review_priority_band"].tolist())
+        self.assertEqual([90, 10], review["review_priority_score"].tolist())
 
     def test_transaction_review_preserves_source_file_row_numbers(self):
         dataframe = pd.DataFrame(
@@ -238,7 +250,7 @@ class RiskTests(unittest.TestCase):
         second = score_issues(issues.iloc[::-1].reset_index(drop=True))
 
         self.assertEqual(
-            "Invalid transaction date; Currency is not in the expected list",
+            "Invalid transaction date; Currency is outside the configured list",
             first.loc[0, "review_priority_drivers"],
         )
         self.assertEqual(

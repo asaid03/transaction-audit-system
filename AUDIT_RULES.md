@@ -1,6 +1,6 @@
 # Audit Rules and Risk Levels
 
-Last updated: 2026-11-01
+Last updated: 2026-11-05
 
 This file lists the checks currently implemented by the audit engine. It is meant to make the review scope clear for developers, testers, and non-technical reviewers.
 
@@ -15,6 +15,11 @@ The workbook now includes deterministic review-priority fields:
 | `review_priority_drivers` | Human-readable reasons behind the score. |
 
 These scores are audit-support review drivers, not fraud probabilities or audit conclusions.
+High priority can mean an urgent data correction, not suspected wrongdoing.
+Reconciled instalments alone contribute 10 points with a low band; other findings
+can still raise priority. Finding severity and review-priority band are separate:
+instalment observations retain their warning issue type for compatibility, but are
+not automatically urgent.
 Low-priority pattern drivers, such as a one-off counterparty, are only applied when the file has enough rows for the pattern to be meaningful.
 For bank-style exports, the cleaner extracts a concise counterparty from narration text and preserves the full source narration in `description` for evidence.
 
@@ -23,7 +28,7 @@ For bank-style exports, the cleaner extracts a concise counterparty from narrati
 | Severity / Signal | Workbook priority | Meaning |
 | --- | --- | --- |
 | `error` | High | Blocking or high-risk issue. The record or reference should be reviewed before relying on the audit output. |
-| `warning` | Medium | Review signal. The data may be valid, but the item deserves human attention. |
+| `warning` | Issue-specific | Usually medium; reconciled instalments and zero amounts are low-priority observations. The data may be valid. |
 
 The workbook combines technical severities with issue-specific scoring rules in `review_findings` and `transaction_review`.
 

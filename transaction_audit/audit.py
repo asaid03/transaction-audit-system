@@ -38,7 +38,7 @@ README_COLUMNS = ["section", "details"]
 
 ISSUE_GUIDANCE = {
     "unknown_vendor_reference": {
-        "finding": "Payment references an unapproved or missing vendor",
+        "finding": "Vendor not found in the uploaded vendor file",
         "why_it_matters": "The transaction points to a vendor that was not found in the uploaded vendor file.",
         "recommended_action": "Confirm whether the vendor should be added to the approved vendor list or investigate the payment.",
     },
@@ -93,13 +93,13 @@ ISSUE_GUIDANCE = {
         "recommended_action": "Compare the related payments with the invoice and payment evidence, then confirm whether every payment should exist.",
     },
     "possible_split_payment": {
-        "finding": "One invoice may have been divided across payments",
+        "finding": "Invoice settled in instalments",
         "why_it_matters": "No individual payment settles the invoice, but the related payments match its total when combined.",
-        "recommended_action": "Compare the related payments with the invoice and approval evidence, then confirm why the invoice was settled in parts.",
+        "recommended_action": "Confirm the agreed payment schedule against the invoice and supporting records. Instalments alone do not establish an approval breach.",
     },
     "missing_invoice_reference": {
-        "finding": "Invoice or reference is missing",
-        "why_it_matters": "Missing invoice evidence makes it harder to confirm the payment purpose and supporting documentation.",
+        "finding": "Invoice reference field is blank",
+        "why_it_matters": "The export has no invoice/reference value for this payment. This does not establish that an invoice document is missing.",
         "recommended_action": "Request the invoice, voucher, or payment reference and document the review outcome.",
     },
     "zero_amount": {
@@ -138,8 +138,8 @@ ISSUE_GUIDANCE = {
         "recommended_action": "Correct the date format and rerun the audit.",
     },
     "unsupported_currency": {
-        "finding": "Unexpected currency",
-        "why_it_matters": "The transaction uses a currency that may be outside the expected audit scope.",
+        "finding": "Currency outside the configured list",
+        "why_it_matters": "This currency is outside the engine's configured list. That list is not independently verified company policy or agreed audit scope.",
         "recommended_action": "Confirm whether this currency belongs in the review and whether conversion evidence is available.",
     },
     "vendor_reference_mismatch": {

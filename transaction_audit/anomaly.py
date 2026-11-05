@@ -287,8 +287,9 @@ def _model_drivers(
         and amounts.loc[index] >= model.amount_threshold
     ):
         drivers.append(
-            "Amount is in the highest 5% of this file "
-            f"(at or above {model.amount_threshold:,.2f})"
+            "Amount meets the amount-context threshold "
+            f"of {model.amount_threshold:,.2f} (the file's 95th percentile with a minimum of "
+            f"{model.config.minimum_amount_threshold:,.2f}); this is context, not a measured model contribution"
         )
 
     if repeated_invoice.loc[index]:
@@ -302,7 +303,7 @@ def _model_drivers(
 
     if not drivers:
         drivers.append(
-            "The combination of amount, invoice status, and payee frequency differs from most payments"
+            "The combination of amount, invoice-reference patterns, and payee frequency differs from most payments"
         )
     return "; ".join(drivers)
 

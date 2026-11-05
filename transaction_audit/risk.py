@@ -45,9 +45,9 @@ ISSUE_SIGNALS = {
     "duplicate_beneficiary_reference": RiskSignal(75, "high", "Duplicate beneficiary key in reference file"),
     "duplicate_budget_reference": RiskSignal(75, "high", "Duplicate budget key in reference file"),
     "possible_duplicate_payment": RiskSignal(70, "high", "Possible duplicate payment"),
-    "possible_split_payment": RiskSignal(75, "high", "Partial payments match one invoice total"),
+    "possible_split_payment": RiskSignal(10, "low", "Partial payments reconcile to one invoice total"),
     "large_amount": RiskSignal(65, "medium", "Payment is above the review limit"),
-    "unsupported_currency": RiskSignal(60, "medium", "Currency is not in the expected list"),
+    "unsupported_currency": RiskSignal(60, "medium", "Currency is outside the configured list"),
     "vendor_reference_mismatch": RiskSignal(60, "medium", "Vendor ID and payee name point to different records"),
     "vendor_concentration": RiskSignal(55, "medium", "One payee represents a high share of reviewed transaction value"),
     "missing_invoice_reference": RiskSignal(55, "medium", "Invoice/reference field is missing"),
@@ -163,7 +163,7 @@ def _signal_for_issue(issue: dict[str, object]) -> RiskSignal:
                 description = (
                     "Possible duplicate of"
                     if issue_type == "possible_duplicate_payment"
-                    else "Possible split payment with"
+                    else "Invoice settled in instalments with"
                 )
                 return RiskSignal(signal.points, signal.band, f"{description} {related_ids}")
         return signal

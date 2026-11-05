@@ -18,7 +18,8 @@ import {
 import CasePanel from "./CasePanel";
 import FileDialog from "./FileDialog";
 import { Queue } from "./Queue";
-import { date, exportCsv, statusLabels, text } from "./format";
+import { date, exportCsv, statusLabels } from "./format";
+import { hasVisibleModelSignal, selectReviewCases } from "./reviewQueue";
 import type {
   AuditRun,
   Decision,
@@ -29,7 +30,6 @@ import type {
 import "./review-workspace.css";
 
 const emptyDecision: Decision = { status: "needs_review", note: "" };
-const bands = { high: 3, medium: 2, low: 1 };
 const isClosed = (value: ReviewStatus) =>
   value === "reviewed" || value === "dismissed";
 
@@ -98,68 +98,27 @@ export default function App() {
   const allCases = run?.review_cases ?? [];
   const statusOf = (item: ReviewCase) =>
     decisions[item.id]?.status ?? "needs_review";
-  const visibleModel = (item: ReviewCase) =>
-    item.members.some((m) => m.model.flagged && m.model.score >= modelCutoff);
-  const candidates = allCases.filter(
-    (item) => item.findings.length || visibleModel(item),
+  const candidates = useMemo(
+    () =>
+      (run?.review_cases ?? []).filter(
+        (item) =>
+          item.findings.length || hasVisibleModelSignal(item, modelCutoff),
+      ),
+    [run, modelCutoff],
   );
   const rows = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return candidates
-      .filter((item) => {
-        const reviewStatus = statusOf(item);
-        return (
-          (scope === "all" ||
-            (scope === "audit" ? item.findings.length : visibleModel(item))) &&
-          (status === "all" ||
-            (status === "open"
-              ? !isClosed(reviewStatus)
-              : status === "closed"
-                ? isClosed(reviewStatus)
-                : status === reviewStatus)) &&
-          (band === "all" ||
-            (item.findings.length > 0 && item.audit_band === band)) &&
-          (issue === "all" ||
-            item.findings.some((f) => f.technical_issue_type === issue)) &&
-          (currency === "all" ||
-            item.totals.some((t) => t.currency === currency)) &&
-          (!query ||
-            item.title.toLowerCase().includes(query) ||
-            item.members.some((m) =>
-              Object.values(m.transaction).some(
-                (value) =>
-                  value !== null && String(value).toLowerCase().includes(query),
-              ),
-            ))
-        );
-      })
-      .sort((a, b) => {
-        const priority = (item: ReviewCase) =>
-          item.findings.length
-            ? bands[item.audit_band] * 1000 + item.audit_score
-            : -1;
-        const amount = (item: ReviewCase) =>
-          item.totals.length === 1 ? Number(item.totals[0].amount ?? 0) : 0;
-        const firstDate = (item: ReviewCase) =>
-          item.members
-            .map((m) => String(m.transaction.transaction_date ?? ""))
-            .sort()[0] ?? "";
-        const difference =
-          sort === "amount"
-            ? String(a.totals[0]?.currency ?? "").localeCompare(
-                b.totals[0]?.currency ?? "",
-              ) || amount(b) - amount(a)
-            : sort === "payee"
-              ? text(a.transaction.counterparty).localeCompare(
-                  text(b.transaction.counterparty),
-                )
-              : sort === "date"
-                ? firstDate(b).localeCompare(firstDate(a))
-                : priority(b) - priority(a) || b.model.score - a.model.score;
-        return difference || a.id.localeCompare(b.id);
-      });
+    return selectReviewCases(candidates, decisions, {
+      scope,
+      status,
+      band,
+      issue,
+      currency,
+      search,
+      sort,
+      modelCutoff,
+    });
   }, [
-    run,
+    candidates,
     decisions,
     scope,
     search,

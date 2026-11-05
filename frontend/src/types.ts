@@ -33,6 +33,8 @@ export interface PaymentRecord {
   };
 }
 export interface ReviewCase extends PaymentRecord {
+  primary_finding: Finding | null;
+  category: string;
   kind: string;
   title: string;
   members: PaymentRecord[];

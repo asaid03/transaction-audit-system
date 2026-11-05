@@ -182,3 +182,15 @@ def test_real_api_case_output_preserves_detection_and_scores():
     assert {m['id'] for m in case['members']} == {m['id'] for m in payload['transactions']}
     assert len(case['findings']) == len(expected)
     assert all(member in payload['transactions'] for member in case['members'])
+
+
+def test_primary_explanation_matches_strongest_finding_not_first_id():
+    record = payment(2, 'A')
+    weaker = {**finding(2, kind='possible_split_payment'), 'finding_id': 'F-0001',
+              'review_priority_score': 10, 'review_priority_band': 'Low'}
+    stronger = {**finding(2, kind='invalid_date'), 'finding_id': 'F-0002',
+                'review_priority_score': 80, 'review_priority_band': 'High'}
+    record['findings'] = [weaker, stronger]
+    case = build_review_cases([record])[0]
+    assert case['primary_finding'] == stronger
+    assert case['title'] == stronger['finding']

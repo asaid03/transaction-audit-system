@@ -246,7 +246,7 @@ def check_possible_duplicate_payments(
 
         if "invoice_reference" in group:
             invoice_group_candidates = group.assign(
-                _invoice_reference=group["invoice_reference"].map(_invoice_match_key)
+                _invoice_reference=group["invoice_reference"].map(invoice_match_key)
             )
             invoice_group_candidates = invoice_group_candidates[
                 invoice_group_candidates["_invoice_reference"].notna()
@@ -408,7 +408,7 @@ def _reconcilable_invoice_groups(
             .str.replace(r"\s+", " ", regex=True)
         )
     working["_counterparty_key"] = _payee_match_keys(checked)
-    working["_invoice_key"] = working["invoice_reference"].map(_invoice_match_key)
+    working["_invoice_key"] = working["invoice_reference"].map(invoice_match_key)
 
     usable = working[
         working["transaction_id"].notna()
@@ -467,7 +467,7 @@ def rows_matching(dataframe: pd.DataFrame, mask: pd.Series):
         yield position, row
 
 
-def _invoice_match_key(value: object) -> str | None:
+def invoice_match_key(value: object) -> str | None:
     """Return a comparison key without changing the invoice reference shown to users."""
     invoice_reference = _clean_optional(value)
     if invoice_reference is None:

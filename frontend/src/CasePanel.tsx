@@ -89,7 +89,7 @@ function PaymentRows({
             aria-expanded={expanded}
             aria-controls={`source-${payment.id}`}
           >
-            {expanded ? "Hide" : "View"} source
+            {expanded ? "Hide" : "View"} imported row
             <ChevronDown size={13} />
           </button>
         </td>
@@ -98,7 +98,11 @@ function PaymentRows({
         <tr>
           <td colSpan={5}>
             <div id={`source-${payment.id}`} className="member-source">
-              <h4>Source row {payment.row_number}</h4>
+              <h4>Source row {payment.row_number} - imported values</h4>
+              <p>
+                Amounts, dates and mapped fields are normalised by the import
+                process. This is not a literal copy of the original file.
+              </p>
               <dl>
                 {Object.entries(transaction).map(([field, value]) => (
                   <div key={field}>
@@ -174,7 +178,14 @@ export default function CasePanel({
     heading.current?.focus({ preventScroll: true });
   }, [item.id]);
   const summary = item.invoice_summary;
+  const primary = item.primary_finding;
+  const primaryIsPayment =
+    primary &&
+    ["possible_split_payment", "possible_duplicate_payment"].includes(
+      primary.technical_issue_type,
+    );
   const types = new Set(item.findings.map((f) => f.technical_issue_type));
+  const reasonCount = types.size;
   const split = types.has("possible_split_payment");
   const excess = summary && Number(summary.excess) > 0;
   const modelMembers = item.members.filter((member) => member.model.flagged);
@@ -249,8 +260,11 @@ export default function CasePanel({
         <div className="investigation-heading">
           <div className="case-heading-meta">
             <Priority item={item} />
+            <span>{item.category}</span>
             <span>{item.members.length} payments</span>
-            <span>{item.findings.length} audit findings</span>
+            <span>
+              {reasonCount} review {reasonCount === 1 ? "reason" : "reasons"}
+            </span>
           </div>
           <h2 ref={heading} tabIndex={-1}>
             {item.title}
@@ -274,6 +288,9 @@ export default function CasePanel({
           <h3>What we observed</h3>
           {summary ? (
             <>
+              {primary && !primaryIsPayment && (
+                <p className="observed-fact">{primary.evidence}</p>
+              )}
               <p className="observed-fact">
                 {item.members.length} recorded payments total{" "}
                 <strong>{money(summary.paid, summary.currency)}</strong> against
@@ -313,8 +330,8 @@ export default function CasePanel({
           ) : (
             <>
               <p className="observed-fact">
-                {item.findings.length
-                  ? item.findings[0].evidence
+                {primary
+                  ? primary.evidence
                   : "The anomaly model identified a payment pattern that differs from other transactions in this file. No audit rule established an error."}
               </p>
               {item.totals.map((total) => (
@@ -370,12 +387,14 @@ export default function CasePanel({
           <div>
             <h3>Why it may matter</h3>
             <p>
-              {excess
-                ? "Recorded settlement exceeds the supplied invoice amount. If the records are complete and authoritative, the difference may require correction."
-                : split
-                  ? "An invoice was settled in parts. That can be legitimate; the pattern alone does not establish an approval breach."
-                  : (item.findings[0]?.why_it_matters ??
-                    "Unusual patterns can be legitimate. The model signal is a prompt for review, not evidence of fraud.")}
+              {primary && !primaryIsPayment
+                ? primary.why_it_matters
+                : excess
+                  ? "Recorded settlement exceeds the supplied invoice amount. If the records are complete and authoritative, the difference may require correction."
+                  : split
+                    ? "An invoice was settled in parts. That can be legitimate; the pattern alone does not establish an approval breach."
+                    : (primary?.why_it_matters ??
+                      "Unusual patterns can be legitimate. The model signal is a prompt for review, not evidence of fraud.")}
             </p>
           </div>
           <div>
@@ -465,7 +484,10 @@ export default function CasePanel({
             <p>
               Scores describe relative unusualness within this file, not fraud
               probability. Each payment keeps its own model score; there is no
-              combined case model score.
+              combined case model score. Scores are not directly comparable
+              across uploads. Context notes are not measured feature
+              contributions, and payment values are not exchange-rate converted
+              by the model.
             </p>
             {item.members.map((member) => (
               <div className="member-model" key={member.id}>
