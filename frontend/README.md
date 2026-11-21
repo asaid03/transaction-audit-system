@@ -25,6 +25,8 @@ benchmark through validation and Isolation Forest. Evaluation labels are removed
 Use **New review** to upload a CSV or XLSX and confirm required/optional mappings.
 Mapping a column twice is rejected. Files are processed in memory.
 
+Under **New review**, enter one threshold amount and currency, use the **GBP 10,000** demo preset, or leave the amount blank. The check compares each matching-currency transaction by absolute value, including equality. The source bar shows the active setting. Exports preserve the setting even when no cases match. The analyse endpoint accepts an optional multipart field `threshold` containing JSON such as `{"currency":"GBP","amount":5000}`. The validation CLI accepts `--review-threshold GBP=5000`.
+
 ## Design
 
 - Neutral light/dark surfaces, blue for actions, semantic priority colours.
@@ -39,6 +41,9 @@ Mapping a column twice is rejected. Files are processed in memory.
 - Radix retains modal focus handling for upload/settings only. Main-task navigation uses normal document focus rather than a modal focus trap.
 - The model cutoff filters existing flagged model scores; it does not retrain or
   alter deterministic checks. Scores are not fraud probabilities.
+- The source bar shows how many transactions received a model assessment. Each
+  case gives the relative model score or the reason assessment was unavailable.
+  Member CSV exports include assessment status and context alongside the score.
 
 No relationship graph: identifiers in one transaction file do not establish a
 verified entity network. No invented supplier names, review history, or findings.

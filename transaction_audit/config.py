@@ -1,4 +1,9 @@
 from dataclasses import dataclass
+import math
+import re
+import sys
+
+import pandas as pd
 
 
 REQUIRED_COLUMNS = [
@@ -226,8 +231,27 @@ BUDGET_COLUMN_ALIASES = {
 }
 
 @dataclass(frozen=True)
+class ReviewThreshold:
+    currency: str
+    amount: float
+
+    def __post_init__(self):
+        if not isinstance(self.currency, str) or not re.fullmatch(r"[A-Z]{3}", self.currency):
+            raise ValueError("Enter a three-letter uppercase threshold currency, such as GBP.")
+        if (
+            isinstance(self.amount, bool)
+            or not isinstance(self.amount, (int, float))
+            or not 0 < self.amount <= sys.float_info.max
+        ):
+            raise ValueError("Enter a finite threshold amount greater than zero.")
+
+
+DEMO_THRESHOLD = ReviewThreshold("GBP", 10_000)
+
+
+@dataclass(frozen=True)
 class ValidationConfig:
-    large_amount_threshold: float = 10000.0
+    review_threshold: ReviewThreshold | None = None
     invoice_amount_tolerance: float = 0.01
     allowed_currencies: tuple[str, ...] = ("GBP", "USD", "EUR")
     date_dayfirst: bool = True
@@ -238,3 +262,26 @@ class ValidationConfig:
     vendor_concentration_threshold: float = 0.40
     vendor_concentration_min_rows: int = 20
     vendor_concentration_min_counterparties: int = 3
+
+    def threshold_settings(self) -> dict:
+        threshold = self.review_threshold
+        return {
+            "threshold_amount": threshold.amount if threshold else None,
+            "threshold_currency": threshold.currency if threshold else None,
+            "threshold_basis": "Absolute individual transaction amount",
+            "threshold_comparison": ">=",
+        }
+
+    def threshold_coverage(self, currencies: pd.Series) -> dict[str, float | None]:
+        threshold = self.review_threshold
+        return {
+            str(currency): threshold.amount if threshold and currency == threshold.currency else None
+            for currency in currencies.fillna("Unknown").unique()
+        }
+
+    def threshold_matches(self, amounts: pd.Series, currencies: pd.Series) -> pd.Series:
+        threshold = self.review_threshold
+        if threshold is None:
+            return pd.Series(False, index=amounts.index)
+        same_currency = currencies.astype("string").str.strip().str.upper().eq(threshold.currency)
+        return (same_currency & amounts.abs().ge(threshold.amount) & amounts.abs().lt(math.inf)).fillna(False)

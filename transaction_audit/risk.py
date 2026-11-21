@@ -46,7 +46,7 @@ ISSUE_SIGNALS = {
     "duplicate_budget_reference": RiskSignal(75, "high", "Duplicate budget key in reference file"),
     "possible_duplicate_payment": RiskSignal(70, "high", "Possible duplicate payment"),
     "possible_split_payment": RiskSignal(10, "low", "Partial payments reconcile to one invoice total"),
-    "large_amount": RiskSignal(65, "medium", "Payment is above the review limit"),
+    "large_amount": RiskSignal(65, "medium", "Transaction meets the reviewer-selected amount threshold"),
     "unsupported_currency": RiskSignal(60, "medium", "Currency is outside the configured list"),
     "vendor_reference_mismatch": RiskSignal(60, "medium", "Vendor ID and payee name point to different records"),
     "vendor_concentration": RiskSignal(55, "medium", "One payee represents a high share of reviewed transaction value"),
@@ -88,7 +88,7 @@ def score_transactions(
 
     issue_signals = _signals_by_transaction_row(issues)
     issue_types = _issue_types_by_transaction_row(issues)
-    amount_signals = _large_amount_signals(review, config.large_amount_threshold)
+    amount_signals = _large_amount_signals(review, config)
     counterparty_signals = _rare_counterparty_signals(review)
 
     score_rows = []
@@ -171,17 +171,13 @@ def _signal_for_issue(issue: dict[str, object]) -> RiskSignal:
     return SEVERITY_FALLBACKS.get(severity, RiskSignal(10, "low", "Issue should be reviewed"))
 
 
-def _large_amount_signals(transactions: pd.DataFrame, threshold: float) -> dict[int, list[RiskSignal]]:
-    if "amount" not in transactions:
+def _large_amount_signals(transactions: pd.DataFrame, config: ValidationConfig) -> dict[int, list[RiskSignal]]:
+    if config.review_threshold is None or "amount" not in transactions or "currency" not in transactions:
         return {}
 
     amounts = parse_amounts(transactions["amount"])
-    signals: dict[int, list[RiskSignal]] = {}
-    for index, amount in amounts.items():
-        if pd.notna(amount) and abs(float(amount)) >= threshold:
-            row_number = int(transactions.loc[index, "row_number"])
-            signals.setdefault(row_number, []).append(ISSUE_SIGNALS["large_amount"])
-    return signals
+    matches = config.threshold_matches(amounts, transactions["currency"])
+    return {int(row): [ISSUE_SIGNALS["large_amount"]] for row in transactions.loc[matches, "row_number"]}
 
 
 def _rare_counterparty_signals(transactions: pd.DataFrame) -> dict[int, list[RiskSignal]]:

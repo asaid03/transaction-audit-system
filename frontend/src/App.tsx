@@ -96,6 +96,9 @@ export default function App() {
   }, [hasWork]);
 
   const allCases = run?.review_cases ?? [];
+  const modelAssessedCount = run?.transactions.filter(
+    (payment) => payment.model.decision != null,
+  ).length ?? 0;
   const statusOf = (item: ReviewCase) =>
     decisions[item.id]?.status ?? "needs_review";
   const candidates = useMemo(
@@ -281,14 +284,14 @@ export default function App() {
             </summary>
             <div>
               <button
-                disabled={!rows.length}
-                onClick={() => exportCsv(rows, decisions, true)}
+                disabled={!run}
+                onClick={() => exportCsv(rows, decisions, true, run)}
               >
                 Case summaries (.csv)
               </button>
               <button
-                disabled={!rows.length}
-                onClick={() => exportCsv(rows, decisions)}
+                disabled={!run}
+                onClick={() => exportCsv(rows, decisions, false, run)}
               >
                 Member payments (.csv)
               </button>
@@ -321,6 +324,13 @@ export default function App() {
                 </span>
                 <span className="source-tag">
                   {run.demo ? "Synthetic sample" : "Uploaded file"}
+                </span>
+                <span className="source-tag">
+                  {run.threshold_amount == null ? "Amount threshold off" :
+                    `${run.demo ? "Demo threshold" : "Amount threshold"} ≥ ${run.threshold_currency} ${run.threshold_amount.toLocaleString("en-GB", { maximumFractionDigits: 20 })}`}
+                </span>
+                <span title="Assessment availability, not the number of flagged payments. Unavailable assessments do not mean low risk.">
+                  Model: {modelAssessedCount} / {run.row_count} assessed
                 </span>
               </div>
               <div className="case-controls">
@@ -544,6 +554,18 @@ export default function App() {
               </Dialog.Close>
             </div>
             <div className="setting-block">
+              <h3>Audit and model coverage</h3>
+              <p>
+                Audit findings identify rule exceptions and review criteria.
+                Model signals identify unusual patterns for investigation.
+                Neither establishes fraud or confirms that a payment is valid.
+              </p>
+              <p>
+                Model assessment available for {modelAssessedCount} of {run?.row_count ?? 0} transactions.
+                {modelAssessedCount < (run?.row_count ?? 0) && " Unavailable assessments are not low-risk results; check the individual payment's explanation."}
+              </p>
+            </div>
+            <div className="setting-block">
               <div>
                 <label htmlFor="model-cutoff">Minimum model score</label>
                 <output htmlFor="model-cutoff">{modelCutoff} / 100</output>
@@ -558,7 +580,9 @@ export default function App() {
               />
               <p>
                 Only filters existing model flags. Audit findings are unchanged.
-                Individual model scores remain available in each case.
+                Scores are relative to the comparison population, not fraud
+                probabilities, and cannot be compared across files. Individual
+                scores and explanations remain available in each case.
               </p>
             </div>
             <div className="setting-block">
@@ -569,7 +593,11 @@ export default function App() {
               </p>
             </div>
             <details className="source-details">
-              <summary>Source column mapping</summary>
+              <summary>Source column mapping and threshold coverage</summary>
+              <p>{run?.threshold_basis}</p>
+              {Object.entries(run?.threshold_coverage ?? {}).map(([currency, limit]) => (
+                <p key={currency}>{currency}: {limit == null ? "Outside amount screening" : `Meets or exceeds ${limit.toLocaleString("en-GB", { maximumFractionDigits: 20 })}`}</p>
+              ))}
               <dl>
                 {Object.entries(run?.mapping ?? {}).map(([source, field]) => (
                   <div key={source}>

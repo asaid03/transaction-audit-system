@@ -376,13 +376,26 @@ textarea::placeholder {
   color: var(--secondary);
   min-width: 0;
 }
-.mapping-grid select {
+.mapping-grid select, .threshold-controls input {
   font-size: 11px;
   padding: 8px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 4px;
   width: 100%;
+}
+.threshold-controls {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  margin: 18px 0 0;
+  padding: 12px;
+  min-width: 0;
+}
+.threshold-controls legend, .threshold-controls p {
+  font-size: 12px;
+}
+.threshold-controls input {
+  color: var(--text);
 }
 .mapping-area details {
   margin-top: 20px;

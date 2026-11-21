@@ -39,6 +39,8 @@ export default function FileDialog({
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [thresholdText, setThresholdText] = useState("");
+  const [thresholdCurrency, setThresholdCurrency] = useState("");
   const [dragging, setDragging] = useState(false);
   const [showAllColumns, setShowAllColumns] = useState(false);
   const required = [
@@ -75,12 +77,14 @@ export default function FileDialog({
     setBusy("Reading file");
     setError("");
     setInspection(null);
+    setThresholdText("");
     setShowAllColumns(false);
     try {
       const data = new FormData();
       data.append("file", file);
       const result = await request<FileInspection>("/api/inspect", data);
       setInspection(result);
+      setThresholdCurrency(result.threshold_preset.currency);
       setMapping(result.mapping);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not read file.");
@@ -96,6 +100,18 @@ export default function FileDialog({
       const data = new FormData();
       data.append("file", file);
       data.append("mapping", JSON.stringify(mapping));
+      const entered = thresholdText.trim();
+      if (entered) {
+        const amount = Number(entered);
+        if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(entered) || !Number.isFinite(amount) || amount <= 0) {
+          throw new Error("Enter an amount greater than zero without thousands separators.");
+        }
+        const currency = thresholdCurrency.trim().toUpperCase();
+        if (!/^[A-Z]{3}$/.test(currency)) {
+          throw new Error("Enter a three-letter threshold currency, such as GBP.");
+        }
+        data.append("threshold", JSON.stringify({ currency, amount }));
+      }
       onRun(await request<AuditRun>("/api/analyse", data));
       onOpenChange(false);
     } catch (error) {
@@ -223,6 +239,22 @@ export default function FileDialog({
                   </label>
                 ))}
               </div>
+              <fieldset className="threshold-controls">
+                <legend>Amount review threshold (optional)</legend>
+                <div className="mapping-grid">
+                  <label>Threshold amount
+                    <input inputMode="decimal" placeholder="No threshold" value={thresholdText} onChange={(event) => setThresholdText(event.target.value)} />
+                  </label>
+                  <label>Threshold currency
+                    <input maxLength={3} value={thresholdCurrency} onChange={(event) => setThresholdCurrency(event.target.value.toUpperCase())} />
+                  </label>
+                </div>
+                <p>Flag individual amounts at or above this value in the chosen currency. Leave the amount blank to skip this check.</p>
+                <button type="button" className="button small" onClick={() => {
+                  setThresholdText(String(inspection.threshold_preset.amount));
+                  setThresholdCurrency(inspection.threshold_preset.currency);
+                }}>Use demo preset ({inspection.threshold_preset.currency} {inspection.threshold_preset.amount.toLocaleString("en-GB")})</button>
+              </fieldset>
               <details>
                 <summary>Invoice and optional columns</summary>
                 <div className="mapping-grid">

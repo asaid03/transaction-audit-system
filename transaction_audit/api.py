@@ -15,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from transaction_audit.anomaly import score_transaction_anomalies
 from transaction_audit.audit import review_findings_dataframe
 from transaction_audit.bundle_workflow import maybe_clean_transactions
-from transaction_audit.config import ValidationConfig
+from transaction_audit.config import DEMO_THRESHOLD, ReviewThreshold, ValidationConfig
 from transaction_audit.cases import build_review_cases
 from transaction_audit.ingestion import load_transactions
 from transaction_audit.risk import score_transactions
@@ -51,20 +51,22 @@ def inspect_data(dataframe: pd.DataFrame, filename: str) -> dict:
         "mapping": plan.canonical_to_source,
         "missing_required": plan.auto_schema.missing_required,
         "sample": _records(cleaned.head(3)),
+        "threshold_preset": {"amount": DEMO_THRESHOLD.amount, "currency": DEMO_THRESHOLD.currency},
         "cleaning": cleaning.transformations if cleaning else [],
     }
 
 
-def analyse_data(dataframe: pd.DataFrame, filename: str, mapping: dict[str, str | None], *, demo: bool = False) -> dict:
+def analyse_data(dataframe: pd.DataFrame, filename: str, mapping: dict[str, str | None], *, demo: bool = False, config: ValidationConfig | None = None) -> dict:
+    config = config or ValidationConfig()
     cleaned, cleaning = maybe_clean_transactions(dataframe)
     schema = apply_mapping_plan(cleaned, mapping)
     if not schema.has_required_schema:
         raise ValueError("Choose columns for: " + ", ".join(schema.missing_required))
 
-    result = validate_transactions(schema.transactions)
+    result = validate_transactions(schema.transactions, config)
     issues = result.issues_dataframe()
     findings = _records(review_findings_dataframe(issues))
-    review = _records(score_transactions(result.transactions, issues))
+    review = _records(score_transactions(result.transactions, issues, config))
     model = _records(score_transaction_anomalies(result.transactions))
     findings_by_row: dict[int, list[dict]] = {}
     for finding in findings:
@@ -90,6 +92,7 @@ def analyse_data(dataframe: pd.DataFrame, filename: str, mapping: dict[str, str 
                 "flagged": signals["ml_model_flag"],
                 "decision": signals["ml_model_decision"],
                 "context": signals["ml_anomaly_drivers"],
+                "status": signals["ml_model_status"],
             },
         }
         transactions.append(record)
@@ -97,7 +100,6 @@ def analyse_data(dataframe: pd.DataFrame, filename: str, mapping: dict[str, str 
             cases.append(record)
 
     dates = result.transactions["transaction_date"].dropna()
-    config = ValidationConfig()
     return {
         "filename": filename,
         "demo": demo,
@@ -107,7 +109,8 @@ def analyse_data(dataframe: pd.DataFrame, filename: str, mapping: dict[str, str 
         "mapping": schema.source_to_canonical,
         "columns": list(result.transactions.columns),
         "cleaning": cleaning.transformations if cleaning else [],
-        "large_payment_limit": config.large_amount_threshold,
+        **config.threshold_settings(),
+        "threshold_coverage": config.threshold_coverage(result.transactions["currency"]),
         "cases": cases,
         "review_cases": build_review_cases(
             transactions,
@@ -150,7 +153,7 @@ def demo() -> dict:
         **{field: source for field, source in plan.canonical_to_source.items() if source != "description"},
         "counterparty": "description",
     }
-    return analyse_data(source, DEMO_PATH.name, mapping, demo=True)
+    return analyse_data(source, DEMO_PATH.name, mapping, demo=True, config=ValidationConfig(review_threshold=DEMO_THRESHOLD))
 
 
 @app.post("/api/inspect")
@@ -160,7 +163,7 @@ async def inspect(file: UploadFile = File(...)) -> dict:
 
 
 @app.post("/api/analyse")
-async def analyse(file: UploadFile = File(...), mapping: str = Form(...)) -> dict:
+async def analyse(file: UploadFile = File(...), mapping: str = Form(...), threshold: str = Form("null"), thresholds: str | None = Form(None)) -> dict:
     dataframe = await _load_upload(file)
     try:
         selected = json.loads(mapping)
@@ -169,7 +172,13 @@ async def analyse(file: UploadFile = File(...), mapping: str = Form(...)) -> dic
             for key, value in selected.items()
         ):
             raise ValueError("Choose valid source columns for each field.")
-        return await run_in_threadpool(analyse_data, dataframe, file.filename or "transactions.csv", selected)
+        if thresholds is not None:
+            raise ValueError("Use the threshold field with one currency and amount.")
+        setting = json.loads(threshold)
+        if setting is not None and (not isinstance(setting, dict) or set(setting) != {"amount", "currency"}):
+            raise ValueError("Supply one threshold with a currency and an amount.")
+        config = ValidationConfig(review_threshold=ReviewThreshold(**setting) if setting is not None else None)
+        return await run_in_threadpool(analyse_data, dataframe, file.filename or "transactions.csv", selected, config=config)
     except (ValueError, TypeError) as error:
         raise HTTPException(422, str(error)) from error
 

@@ -20,6 +20,18 @@ import type {
   ReviewStatus,
 } from "./types";
 
+function modelAvailability(payment: PaymentRecord): string {
+  if (payment.model.decision != null) return `${payment.model.score} / 100`;
+  const reasons: Record<string, string> = {
+    insufficient_data: "too few usable comparison transactions",
+    invalid_amount: "amount is not usable",
+    missing_currency: "currency is missing",
+    constant_population: "comparison transactions have no model feature variation",
+  };
+  const reason = payment.model.status && reasons[payment.model.status];
+  return reason ? `Unavailable: ${reason}` : "Unavailable for this payment";
+}
+
 function PaymentTable({
   payments,
   context = false,
@@ -116,14 +128,11 @@ function PaymentRows({
                 ))}
               </dl>
               <p>
-                Original audit score: {payment.audit_score} / 100.{" "}
+                Rule-based review priority: {payment.audit_score} / 100.{" "}
                 {payment.audit_drivers}
               </p>
               <p>
-                Model score:{" "}
-                {payment.model.decision === null
-                  ? "Not available"
-                  : `${payment.model.score} / 100`}
+                Relative model score: {modelAvailability(payment)}
                 . {payment.model.context}
               </p>
             </div>
@@ -189,6 +198,7 @@ export default function CasePanel({
   const split = types.has("possible_split_payment");
   const excess = summary && Number(summary.excess) > 0;
   const modelMembers = item.members.filter((member) => member.model.flagged);
+  const unavailableMembers = item.members.filter((member) => member.model.decision == null);
   const status = decision?.status ?? "needs_review";
   const dates = item.members
     .map((m) => m.transaction.transaction_date)
@@ -350,12 +360,9 @@ export default function CasePanel({
                 )}
             </>
           )}
-          {types.has("large_amount") && (
+          {types.has("large_amount") && run.threshold_amount != null && (
             <p className="case-muted">
-              Large-payment comparison: at or above{" "}
-              {run.large_payment_limit.toLocaleString("en-GB")} in the payment's
-              currency. This is the engine's review limit, not a verified
-              company approval policy.
+              The individual transaction reached the review threshold of {run.threshold_currency} {run.threshold_amount.toLocaleString("en-GB", { maximumFractionDigits: 20 })} by absolute value.
             </p>
           )}
         </section>
@@ -417,10 +424,10 @@ export default function CasePanel({
               ),
             )}
             {!item.findings.length && (
-              <li>
-                Compare the source payment with its supporting documents and the
-                surrounding business context.
-              </li>
+              <>
+                <li>Check the invoice, approval and business purpose against the imported payment.</li>
+                <li>Compare the payment with similar transactions in the same currency and record why the pattern is expected or needs follow-up.</li>
+              </>
             )}
           </ul>
         </section>
@@ -478,24 +485,32 @@ export default function CasePanel({
               <span>
                 {modelMembers.length
                   ? `${modelMembers.length} flagged payments`
-                  : "No flagged payments"}
+                  : unavailableMembers.length === item.members.length && item.members.length > 0
+                    ? "Assessment unavailable"
+                    : "No flagged payments"}
               </span>
             </summary>
             <p>
-              Scores describe relative unusualness within this file, not fraud
-              probability. Each payment keeps its own model score; there is no
-              combined case model score. Scores are not directly comparable
-              across uploads. Context notes are not measured feature
-              contributions, and payment values are not exchange-rate converted
-              by the model.
+              Audit priority reflects rule findings and review criteria. Model
+              scores describe relative unusualness in the comparison population;
+              neither score is a fraud probability. Each payment keeps its own
+              model score. Do not add it to audit priority or compare it across
+              uploads. Context notes describe observed characteristics, not
+              measured contributions to the model decision. Amounts are not
+              exchange-rate converted.
             </p>
+            {unavailableMembers.length > 0 && (
+              <p className="case-muted">
+                {unavailableMembers.length} of {item.members.length} payments could
+                not be assessed by the model. An unavailable assessment is not a
+                low-risk result; audit findings still apply.
+              </p>
+            )}
             {item.members.map((member) => (
               <div className="member-model" key={member.id}>
                 <strong>{text(member.transaction.transaction_id)}</strong>
                 <span>
-                  {member.model.decision === null
-                    ? "Not run"
-                    : `${member.model.score} / 100`}
+                  {modelAvailability(member)}
                 </span>
                 <p>{member.model.context}</p>
               </div>

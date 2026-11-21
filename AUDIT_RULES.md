@@ -1,6 +1,10 @@
 # Audit Rules and Risk Levels
 
-Last updated: 2026-11-05
+Last updated: 2026-11-21
+
+## Amount review threshold
+
+Reviewers can choose one amount and currency for a run. The check selects each matching-currency transaction whose absolute amount meets or exceeds that value, including credits and receipts. The demo uses a labelled GBP 10,000 preset. Uploads with a blank amount skip this check and continue all other checks. A match adds the existing 65-point medium review signal. CSV and workbook exports record the applied settings.
 
 This file lists the checks currently implemented by the audit engine. It is meant to make the review scope clear for developers, testers, and non-technical reviewers.
 
@@ -36,18 +40,20 @@ The workbook combines technical severities with issue-specific scoring rules in 
 
 The `ml_anomalies` output is a separate anomaly-screening layer for review support. Its score is derived from a deterministic `scikit-learn` Isolation Forest; validation findings do not add points to the model score. It is not a fraud probability and should not be treated as an audit conclusion.
 
-The model runs only with at least 50 transactions. It is configured to flag roughly the most unusual 5% of the uploaded population. A score of 50 or above means Isolation Forest classified the row as an outlier; scores below 50 are relative ranks among model inliers.
+The model needs at least 50 usable training observations per currency. Identical signed amounts with the same currency, payee and normalised invoice reference count once for fitting. Each source row retains its result. Rows with invalid amounts or missing or malformed currencies have an unavailable assessment. A currency group with too few observations or no variation in its model inputs is also unavailable and is excluded from fitting.
+
+Isolation Forest uses a 5% setting on training observations. The percentage of source rows flagged can differ when scores tie or a repeat has several source rows. Scores of 50 or above identify model flags. Scores are relative to the fitted population. Use `ml_model_status` and the decision value to identify available assessments in exports.
 
 Current transaction-level drivers:
 
 | Model feature / explanation | Meaning |
 | --- | --- |
-| Amount and amount rank | Amount is unusual compared with the uploaded transaction population. |
-| Repeated invoice/reference | Invoice/reference and amount repeat for the same payee. |
+| Amount and amount rank | Model compares absolute amounts to the median positive magnitude and the distribution in the same currency. The 95th percentile provides separate context for selected rows, with no fixed amount floor. |
+| Repeated invoice/reference | Same payee, normalised invoice reference, signed amount (rounded to two decimals) and currency. Both rows get the same repeat indicator. |
 | Missing invoice/reference | The transaction has no invoice/reference value where that field exists. |
-| Payee frequency | The payee appears unusually often or rarely in the uploaded population. |
+| Payee frequency | Share of usable reference transactions for the payee in the same currency. |
 
-The labelled benchmark fixture is `sample_data/reduced_transactions_200_with_anomalies.csv`.
+The synthetic benchmark (`sample_data/reduced_transactions_200_with_anomalies.csv`) selects 10 of 15 labelled rows, plus four unlabelled originals paired with labelled copies. It selects four of five duplicate pairs, two of five large amounts and four of five missing references. These results describe this fixture only. The context notes describe observed facts for investigation.
 
 ## Single-File Transaction Rules
 

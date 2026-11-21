@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 
 import pandas as pd
+from transaction_audit.config import ValidationConfig
 
 
 ISSUE_COLUMNS = [
@@ -35,6 +36,7 @@ class ValidationIssue:
 class ValidationResult:
     transactions: pd.DataFrame
     issues: list[ValidationIssue]
+    config: ValidationConfig = ValidationConfig()
 
     @property
     def is_valid(self) -> bool:

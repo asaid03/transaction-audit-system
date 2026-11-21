@@ -40,6 +40,7 @@ class ReviewApiTests(unittest.TestCase):
             self.assertEqual("high", case["audit_band"])
             self.assertFalse(case["model"]["flagged"])
             self.assertIsNone(case["model"]["decision"])
+            self.assertEqual("insufficient_data", case["model"]["status"])
             self.assertTrue(case["findings"][0]["related_record_id"])
 
     def test_upload_inspection_and_manual_mapping(self):
@@ -66,6 +67,20 @@ class ReviewApiTests(unittest.TestCase):
         unsupported = self.client.post("/api/inspect", files={"file": ("payments.xls", contents)})
         self.assertEqual(422, unsupported.status_code)
 
+    def test_threshold_must_be_one_complete_setting_and_is_recorded_without_matches(self):
+        files = {"file": ("payments.csv", self.dataframe.to_csv(index=False).encode())}
+        data = {"mapping": json.dumps(self.mapping)}
+        for setting in ({"GBP": 200}, {"amount": 200}, [], {"amount": "200", "currency": "USD"}):
+            with self.subTest(setting=setting):
+                response = self.client.post("/api/analyse", files=files, data={**data, "threshold": json.dumps(setting)})
+                self.assertEqual(422, response.status_code)
+        data["threshold"] = json.dumps({"currency": "USD", "amount": 200})
+        response = self.client.post("/api/analyse", files=files, data=data)
+        self.assertEqual(200, response.status_code)
+        run = response.json()
+        self.assertEqual(("USD", 200, ">="), (run["threshold_currency"], run["threshold_amount"], run["threshold_comparison"]))
+        self.assertEqual({"GBP": None}, run["threshold_coverage"])
+
     def test_upload_larger_than_host_limit_is_rejected(self):
         response = self.client.post(
             "/api/inspect",
@@ -84,6 +99,7 @@ class ReviewApiTests(unittest.TestCase):
     def test_demo_uses_real_engine_outputs_without_ground_truth(self):
         payload = demo()
         self.assertTrue(payload["demo"])
+        self.assertEqual(("GBP", 10000), (payload["threshold_currency"], payload["threshold_amount"]))
         self.assertEqual(200, payload["row_count"])
         self.assertTrue(payload["model_available"])
         self.assertNotIn("is_anomaly", payload["columns"])

@@ -12,6 +12,7 @@ from transaction_audit.audit import (
     review_findings_dataframe,
 )
 from transaction_audit.bundle_workflow import run_bundle_audit
+from transaction_audit.config import ReviewThreshold, ValidationConfig
 from transaction_audit.datasets import AuditBundle, AuditDataset, DatasetType
 from transaction_audit.schema import apply_schema
 from transaction_audit.validation import validate_transactions
@@ -50,12 +51,15 @@ class AuditTests(unittest.TestCase):
             }
         )
         schema_result = apply_schema(dataframe)
-        result = validate_transactions(schema_result.transactions)
+        result = validate_transactions(schema_result.transactions, ValidationConfig(review_threshold=ReviewThreshold("USD", 500)))
         summary = build_audit_summary(result, "sample.csv")
 
         workbook_bytes = build_audit_workbook(result, schema_result, summary)
         workbook = openpyxl.load_workbook(io.BytesIO(workbook_bytes), read_only=True)
 
+        headers, values = workbook["summary"].values
+        saved = dict(zip(headers, values, strict=True))
+        self.assertEqual(("USD", 500, ">="), (saved["threshold_currency"], saved["threshold_amount"], saved["threshold_comparison"]))
         self.assertEqual(
             {
                 "summary",
@@ -219,7 +223,7 @@ class AuditTests(unittest.TestCase):
             transactions=AuditDataset(DatasetType.TRANSACTIONS, transaction_schema.transactions, "transactions.csv"),
             vendors=AuditDataset(DatasetType.VENDORS, vendor_schema.transactions, "vendors.csv"),
         )
-        bundle_result = run_bundle_audit(bundle)
+        bundle_result = run_bundle_audit(bundle, ValidationConfig(review_threshold=ReviewThreshold("GBP", 500)))
 
         workbook_bytes = build_bundle_audit_workbook(
             bundle_result,
@@ -233,6 +237,7 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(
             {
                 "read_me",
+                "threshold_coverage",
                 "summary",
                 "review_findings",
                 "finding_summary",
@@ -251,3 +256,7 @@ class AuditTests(unittest.TestCase):
             set(workbook.sheetnames),
         )
         self.assertEqual("unknown_vendor_reference", workbook["reference_issues"]["E2"].value)
+        headers, values = workbook["summary"].values
+        saved = dict(zip(headers, values, strict=True))
+        self.assertEqual(("GBP", 500), (saved["threshold_currency"], saved["threshold_amount"]))
+        self.assertEqual(("USD", None), list(workbook["threshold_coverage"].values)[1])

@@ -158,8 +158,8 @@ ISSUE_GUIDANCE = {
         "recommended_action": "Compare this row and the preceding row with the source statement and check for omitted, duplicated, or incorrectly signed entries.",
     },
     "large_amount": {
-        "finding": "Large amount transaction",
-        "why_it_matters": "The payment is above the amount selected for additional review.",
+        "finding": "Reviewer-selected amount threshold reached",
+        "why_it_matters": "The absolute transaction amount meets or exceeds a supplied currency-specific review threshold. This is a selection criterion, not evidence of missing approval.",
         "recommended_action": "Confirm approval evidence, supporting documentation, and whether enhanced review is required.",
     },
 }
@@ -176,6 +176,7 @@ def build_audit_summary(result: ValidationResult, source_name: str) -> dict[str,
     return {
         "source_name": source_name,
         "run_timestamp_utc": datetime.now(UTC).isoformat(),
+        **result.config.threshold_settings(),
         "rows_checked": int(len(result.transactions)),
         "issues_found": int(len(result.issues)),
         "error_count": int(severity_counts.get("error", 0)),
@@ -292,6 +293,10 @@ def audit_readme_dataframe() -> pd.DataFrame:
                 "details": "Scores are transparent rule-based review drivers, not fraud probabilities or audit conclusions.",
             },
             {
+                "section": "Model signals",
+                "details": "Use ml_model_status to check whether a row was assessed. Scores describe relative unusualness within the fitted population. Context notes list observed characteristics. Review the source evidence before recording a conclusion.",
+            },
+            {
                 "section": "Review status",
                 "details": "Use the review_status column to track whether each finding is open, resolved, accepted, or needs follow-up.",
             },
@@ -316,7 +321,7 @@ def build_audit_workbook(
         "summary": summary_dataframe(summary),
         "review_findings": findings,
         "finding_summary": finding_summary_dataframe(findings),
-        "transaction_review": score_transactions(result.transactions, issues),
+        "transaction_review": score_transactions(result.transactions, issues, result.config),
         "ml_anomalies": score_transaction_anomalies(result.transactions),
         "raw_issues": issues,
         "issue_counts": issue_counts_dataframe(result),
@@ -339,6 +344,7 @@ def build_bundle_audit_summary(bundle_result) -> dict[str, object]:
     return {
         "run_timestamp_utc": datetime.now(UTC).isoformat(),
         "transactions": bundle_result.bundle.transactions.row_count,
+        **bundle_result.transaction_validation.config.threshold_settings(),
         "reference_datasets_uploaded": len(bundle_result.bundle.reference_datasets()),
         "issues_found": int(len(all_issues)),
         "transaction_issues": int(len(bundle_result.transaction_validation.issues)),
@@ -370,14 +376,18 @@ def build_bundle_audit_workbook(
     output = io.BytesIO()
     all_issues = bundle_result.all_issues_dataframe()
     findings = review_findings_dataframe(all_issues)
+    validation = bundle_result.transaction_validation
+    coverage = validation.config.threshold_coverage(validation.transactions.get("currency", pd.Series(dtype=str)))
     sheets = {
         "read_me": audit_readme_dataframe(),
+        "threshold_coverage": pd.DataFrame(coverage.items(), columns=["currency", "applied_threshold"]),
         "summary": summary_dataframe(build_bundle_audit_summary(bundle_result)),
         "review_findings": findings,
         "finding_summary": finding_summary_dataframe(findings),
         "transaction_review": score_transactions(
             bundle_result.transaction_validation.transactions,
             all_issues,
+            bundle_result.transaction_validation.config,
         ),
         "ml_anomalies": score_transaction_anomalies(bundle_result.transaction_validation.transactions),
         "dataset_summary": bundle_result.bundle.dataset_summary(),

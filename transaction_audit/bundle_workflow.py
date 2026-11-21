@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from transaction_audit.cleaning import CleaningResult, clean_transaction_export
+from transaction_audit.config import ValidationConfig
 from transaction_audit.datasets import AuditBundle, DatasetType
 from transaction_audit.reconciliation import ReconciliationResult, reconcile_bundle
 from transaction_audit.types import ISSUE_COLUMNS, ValidationResult
@@ -35,10 +36,10 @@ class BundleAuditResult:
         return pd.concat(non_empty, ignore_index=True)
 
 
-def run_bundle_audit(bundle: AuditBundle) -> BundleAuditResult:
+def run_bundle_audit(bundle: AuditBundle, config: ValidationConfig | None = None) -> BundleAuditResult:
     return BundleAuditResult(
         bundle=bundle,
-        transaction_validation=validate_transactions(bundle.transactions.dataframe),
+        transaction_validation=validate_transactions(bundle.transactions.dataframe, config),
         reference_reconciliation=reconcile_bundle(bundle),
     )
 

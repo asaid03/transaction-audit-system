@@ -26,7 +26,7 @@ class ValidationTests(unittest.TestCase):
         self.assertIn("invalid_date", issue_types)
         self.assertIn("unsupported_currency", issue_types)
         self.assertEqual(2, issue_types.count("duplicate_transaction_id"))
-        self.assertIn("large_amount", issue_types)
+        self.assertNotIn("large_amount", issue_types)
 
     def test_missing_amount_is_not_also_invalid_amount(self):
         dataframe = pd.DataFrame(
@@ -596,7 +596,7 @@ class ValidationTests(unittest.TestCase):
         issue_types = result.issues_dataframe()["issue_type"].tolist()
 
         self.assertNotIn("population_large_amount", issue_types)
-        self.assertIn("large_amount", issue_types)
+        self.assertNotIn("large_amount", issue_types)
 
     def test_runs_running_balance_integrity_when_balance_is_available(self):
         dataframe = pd.DataFrame(

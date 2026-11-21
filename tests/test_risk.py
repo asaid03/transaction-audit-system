@@ -61,10 +61,10 @@ class RiskTests(unittest.TestCase):
 
         review = score_transactions(result.transactions, result.issues_dataframe())
 
-        self.assertEqual(100, review.loc[0, "review_priority_score"])
+        self.assertEqual(60, review.loc[0, "review_priority_score"])
         self.assertEqual("medium", review.loc[0, "review_priority_band"])
         self.assertIn("Currency is outside the configured list", review.loc[0, "review_priority_drivers"])
-        self.assertIn("Payment is above the review limit", review.loc[0, "review_priority_drivers"])
+        self.assertNotIn("threshold", review.loc[0, "review_priority_drivers"])
 
     def test_normal_transaction_remains_low_priority(self):
         dataframe = pd.DataFrame(

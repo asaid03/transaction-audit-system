@@ -52,7 +52,7 @@ def check_amounts(
     amount_missing = _missing_mask(original["amount"])
     invalid_amount = checked["amount"].isna() & ~amount_missing
     zero_amount = checked["amount"].eq(0)
-    large_amount = checked["amount"].abs().ge(config.large_amount_threshold)
+    large_amount = config.threshold_matches(checked["amount"], checked["currency"])
 
     for position, row in rows_matching(checked, invalid_amount):
         issues.append(
@@ -86,7 +86,7 @@ def check_amounts(
                 field="amount",
                 issue_type="large_amount",
                 severity="warning",
-                message=f"Payment is above the review limit of {config.large_amount_threshold:,.2f}.",
+                message=f"Absolute transaction amount meets or exceeds the review threshold of {config.review_threshold.amount:,} {row['currency']}.",
             )
         )
 

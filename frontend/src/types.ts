@@ -30,6 +30,7 @@ export interface PaymentRecord {
     flagged: boolean;
     decision: number | null;
     context: string;
+    status?: string;
   };
 }
 export interface ReviewCase extends PaymentRecord {
@@ -63,11 +64,16 @@ export interface AuditRun {
   review_cases: ReviewCase[];
   cleaning: string[];
   finding_count: number;
-  large_payment_limit: number;
+  threshold_amount: number | null;
+  threshold_currency: string | null;
+  threshold_basis: string;
+  threshold_comparison: ">=";
+  threshold_coverage: Record<string, number | null>;
   model_available: boolean;
   unlinked_findings: Finding[];
 }
 export interface FileInspection {
+  threshold_preset: { currency: string; amount: number };
   filename: string;
   row_count: number;
   columns: string[];

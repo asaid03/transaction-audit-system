@@ -18,6 +18,7 @@ async function uploadCaseFile(page: Page, contents = csv, rowCount = 4) {
   });
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByText(`${rowCount} source rows`)).toBeVisible();
+  await dialog.getByRole("button", { name: "Use demo preset (GBP 10,000)" }).click();
   await dialog.getByRole("button", { name: "Start review" }).click();
   await expect(dialog).not.toBeVisible();
   await expect(
@@ -206,6 +207,8 @@ test("filters select complete cases; export includes members, source dates and c
   const contents = await readFile((await download.path())!, "utf8");
   expect(contents).toContain('"case_id"');
   expect(contents).toContain('"transaction_date"');
+  expect(contents).toContain('"model_status"');
+  expect(contents).toContain('"model_context"');
   expect(contents).toContain("PAY-A");
   expect(contents).toContain("PAY-B");
   expect(contents).not.toContain("PAY-C");
@@ -256,7 +259,7 @@ test("focus mode, filtered navigation, keyboard opening and source context", asy
   await detail.getByRole("button", { name: "Back to cases" }).click();
   await page.getByRole("button", { name: /^Investigate / }).click();
   await expect(
-    detail.getByText(/Large-payment comparison: at or above 10,000/),
+    detail.getByText(/reached the review threshold of GBP 10,000/),
   ).toBeVisible();
 });
 
@@ -273,13 +276,13 @@ test("manual upload mapping remains available", async ({ page }) => {
   await expect(dialog.getByText("200 source rows")).toBeVisible();
   await expect(
     dialog
-      .getByLabel("Currency")
+      .getByLabel("Currency", { exact: true })
       .getByRole("option", { name: "is_anomaly", exact: true }),
   ).toHaveCount(0);
   await dialog.getByLabel("Show all source columns").click();
   await expect(
     dialog
-      .getByLabel("Currency")
+      .getByLabel("Currency", { exact: true })
       .getByRole("option", { name: "is_anomaly", exact: true }),
   ).toHaveCount(1);
   await dialog.getByLabel("Payee", { exact: true }).selectOption("description");
@@ -290,6 +293,67 @@ test("manual upload mapping remains available", async ({ page }) => {
   await dialog.getByRole("button", { name: "Start review" }).click();
   await expect(dialog).not.toBeVisible();
   await expect(page.getByText("Uploaded file", { exact: true })).toBeVisible();
+});
+
+test("blank thresholds skip amount selection and invalid values are explained", async ({ page }) => {
+  await page.getByRole("button", { name: "New review", exact: true }).click();
+  await page.getByLabel("Transaction file", { exact: true }).setInputFiles({
+    name: "no-limits.csv", mimeType: "text/csv", buffer: Buffer.from(csv),
+  });
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("4 source rows")).toBeVisible();
+  await dialog.getByLabel("Threshold amount").fill("-1");
+  await dialog.getByRole("button", { name: "Start review" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("greater than zero");
+  await dialog.getByLabel("Threshold amount").fill("");
+  const responsePromise = page.waitForResponse((response) => response.url().endsWith("/api/analyse"));
+  await dialog.getByRole("button", { name: "Start review" }).click();
+  const run = await (await responsePromise).json();
+  expect(run.threshold_coverage).toEqual({ GBP: null, USD: null });
+  expect(run.threshold_amount).toBeNull();
+  const findingTypes = run.transactions.flatMap((item: any) => item.findings.map((finding: any) => finding.technical_issue_type));
+  expect(findingTypes).toContain("possible_duplicate_payment");
+  expect(findingTypes).not.toContain("large_amount");
+  await expect(dialog).not.toBeVisible();
+});
+
+test("an empty review exports the selected threshold even when the file uses another currency", async ({ page }) => {
+  await expect(page.getByText("Demo threshold ≥ GBP 10,000")).toBeVisible();
+  await page.getByRole("button", { name: "New review", exact: true }).click();
+  await page.getByLabel("Transaction file", { exact: true }).setInputFiles({
+    name: "clean.csv", mimeType: "text/csv",
+    buffer: Buffer.from(csv.split("\n").slice(0, 2).join("\n")),
+  });
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Threshold amount").fill("2500");
+  await dialog.getByLabel("Threshold currency").fill("USD");
+  await dialog.getByRole("button", { name: "Start review" }).click();
+  await expect(page.getByText("Amount threshold ≥ USD 2,500")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Investigate / })).toHaveCount(0);
+  await page.getByText("Export review", { exact: true }).click();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Case summaries (.csv)" }).click();
+  const contents = await readFile((await (await download).path())!, "utf8");
+  expect(contents).toContain('"run_settings","clean.csv","2500","USD","Absolute individual transaction amount",">="');
+  expect(contents.split("\r\n")).toHaveLength(2);
+});
+
+test("unavailable model assessments are explained separately from audit priority", async ({ page }) => {
+  await uploadCaseFile(page);
+  await expect(page.getByText("Model: 0 / 4 assessed", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /^Investigate / }).first().click();
+  const detail = page.getByRole("region", { name: "Case investigation" });
+  await detail.getByText("Supporting model evidence", { exact: false }).click();
+  await expect(detail.getByText("Assessment unavailable", { exact: true })).toBeVisible();
+  await expect(detail.getByText(/An unavailable assessment is not a low-risk result/)).toBeVisible();
+  await expect(detail.locator(".member-model").first()).toContainText("Unavailable");
+  await detail.getByRole("button", { name: "View imported row" }).first().click();
+  await expect(detail.getByText(/Rule-based review priority:/)).toBeVisible();
+  await expect(detail.getByText(/Relative model score: Unavailable/)).toBeVisible();
+  await page.getByRole("button", { name: "Review settings", exact: true }).click();
+  const settings = page.getByRole("dialog");
+  await expect(settings.getByText(/Model assessment available for 0 of 4 transactions/)).toBeVisible();
+  await expect(settings.getByText(/cannot be compared across files/)).toBeVisible();
 });
 
 test("reconciled instalments are low priority and missing currency is not invented", async ({

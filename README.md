@@ -40,7 +40,7 @@ Checks include:
 - missing required columns
 - missing required values
 - invalid amounts
-- zero amounts and payments above the review limit
+- zero amounts and transactions meeting one optional same-currency amount threshold (the demo uses a visible GBP 10,000 preset)
 - invalid dates
 - unsupported currencies
 - duplicate transaction IDs

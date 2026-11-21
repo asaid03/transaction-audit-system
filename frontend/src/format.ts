@@ -1,4 +1,4 @@
-import type { ReviewCase, ReviewStatus, Value } from "./types";
+import type { AuditRun, ReviewCase, ReviewStatus, Value } from "./types";
 
 export const statusLabels: Record<ReviewStatus, string> = {
   needs_review: "Needs review",
@@ -58,8 +58,17 @@ export function exportCsv(
   rows: ReviewCase[],
   decisions: Record<string, { status: ReviewStatus; note: string }>,
   summary = false,
+  run?: AuditRun | null,
 ) {
-  const fields = [
+  const settings = {
+    source_file: run?.filename,
+    threshold_amount: run?.threshold_amount,
+    threshold_currency: run?.threshold_currency,
+    threshold_basis: run?.threshold_basis,
+    threshold_comparison: run?.threshold_comparison,
+    threshold_coverage: JSON.stringify(run?.threshold_coverage ?? {}),
+  };
+  const caseFields = [
     "case_id",
     "case_title",
     "review_category",
@@ -82,6 +91,8 @@ export function exportCsv(
     "audit_score",
     "model_score",
     "model_flagged",
+    "model_status",
+    "model_context",
     "finding",
     "evidence",
     "review_status",
@@ -93,10 +104,13 @@ export function exportCsv(
     return `"${output.replaceAll('"', '""')}"`;
   };
   const contents = [
-    fields,
+    ["record_type", ...Object.keys(settings), ...caseFields],
+    ...(rows.length ? [] : [["run_settings", ...Object.values(settings), ...caseFields.map(() => "")]]),
     ...rows.flatMap((item) =>
       (summary ? [null] : item.members.length ? item.members : [null]).map(
         (member) => [
+          summary ? "case_summary" : member ? "member_payment" : "case_summary",
+          ...Object.values(settings),
           item.id,
           item.title,
           item.category,
@@ -129,6 +143,8 @@ export function exportCsv(
           item.findings.length ? item.audit_score : "",
           member?.model.decision == null ? "" : member.model.score,
           member ? member.model.flagged : "",
+          member ? (member.model.status ?? (member.model.decision == null ? "unavailable" : "scored")) : "",
+          member?.model.context ?? "",
           item.findings.map((f) => f.finding).join("; ") ||
             "Unusual payment pattern",
           item.findings.map((f) => f.evidence).join("; ") || item.model.context,
