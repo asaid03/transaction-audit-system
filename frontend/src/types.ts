@@ -46,6 +46,7 @@ export interface ReviewCase extends PaymentRecord {
   invoice_summary: null | {
     currency: string;
     invoice: string;
+    paid_percent: string;
     paid: string;
     excess: string;
     remaining: string;

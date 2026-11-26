@@ -157,6 +157,21 @@ ISSUE_GUIDANCE = {
         "why_it_matters": "The reported balance movement does not agree with the transaction amount using the statement's inferred sign convention.",
         "recommended_action": "Compare this row and the preceding row with the source statement and check for omitted, duplicated, or incorrectly signed entries.",
     },
+    "approval_authority_exceeded": {
+        "finding": "Payment exceeds approval authority",
+        "why_it_matters": "The payment exceeds the authority recorded for this row.",
+        "recommended_action": "Verify the applicable delegation and approval evidence for the payment date.",
+    },
+    "approval_evidence_gap": {
+        "finding": "Approval authority could not be assessed",
+        "why_it_matters": "The payment and recorded authority could not be compared in GBP.",
+        "recommended_action": "Obtain the applicable limit and confirm the payment amount and currency.",
+    },
+    "approval_status_discrepancy": {
+        "finding": "Recorded approval status needs reconciliation",
+        "why_it_matters": "The recorded policy outcome differs from the individual payment amount check.",
+        "recommended_action": "Check the underlying policy, any other conditions and supporting approvals.",
+    },
     "large_amount": {
         "finding": "Reviewer-selected amount threshold reached",
         "why_it_matters": "The absolute transaction amount meets or exceeds a supplied currency-specific review threshold. This is a selection criterion, not evidence of missing approval.",

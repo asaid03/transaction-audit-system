@@ -8,6 +8,10 @@ Reviewers can choose one amount and currency for a run. The check selects each m
 
 This file lists the checks currently implemented by the audit engine. It is meant to make the review scope clear for developers, testers, and non-technical reviewers.
 
+## Recorded approval authority
+
+Mapping approval_limit_gbp or approval_policy_met enables an individual-payment control. A GBP payment strictly above its recorded GBP limit earns High priority (80 points). Missing or incomparable evidence and contradictory recorded status each earn Medium priority (55 points). Equality is within authority. Excess measures authority exceeded.
+
 ## Review Priority
 
 The workbook now includes deterministic review-priority fields:

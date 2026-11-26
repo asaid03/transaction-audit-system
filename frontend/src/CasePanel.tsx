@@ -305,7 +305,7 @@ export default function CasePanel({
                 {item.members.length} recorded payments total{" "}
                 <strong>{money(summary.paid, summary.currency)}</strong> against
                 a supplied invoice amount of{" "}
-                <strong>{money(summary.invoice, summary.currency)}</strong>.
+                <strong>{money(summary.invoice, summary.currency)}</strong> ({summary.paid_percent}% paid).
               </p>
               <div className="case-calculation">
                 <div>

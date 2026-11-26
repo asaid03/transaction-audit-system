@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 import re
 from typing import Any, Hashable
 
@@ -90,6 +91,37 @@ def check_amounts(
             )
         )
 
+    return issues
+
+
+def _gbp_amount(value: object) -> Decimal | None:
+    text = str(value).strip()
+    match = re.fullmatch(r"(?:GBP\s*|£\s*)?(\d{1,3}(?:,\d{3})+|\d+)(\.\d{1,2})?", text, re.I)
+    if match is None:
+        return None
+    return Decimal(match[1].replace(",", "") + (match[2] or ""))
+
+
+def check_approval_authority(original: pd.DataFrame) -> list[ValidationIssue]:
+    if not {"approval_limit_gbp", "approval_policy_met"}.intersection(original.columns):
+        return []
+    issues = []
+    for number, row in zip(source_row_numbers(original), original.to_dict("records"), strict=True):
+        amount = _gbp_amount(row["amount"])
+        limit = _gbp_amount(row.get("approval_limit_gbp"))
+        if str(row["currency"]).strip().upper() != "GBP" or amount is None or limit is None:
+            issues.append(make_issue(int(number), "approval_limit_gbp", "approval_evidence_gap", "warning",
+                "Comparison requires a nonnegative GBP payment and a recorded nonnegative GBP limit in pounds and pence.", row))
+            continue
+        exceeded = amount > limit
+        if exceeded:
+            utilisation = f" ({amount / limit:.2%} of authority)" if limit else ""
+            issues.append(make_issue(int(number), "approval_limit_gbp", "approval_authority_exceeded", "error",
+                f"Payment £{amount:,.2f} exceeds recorded authority £{limit:,.2f} by £{amount - limit:,.2f}{utilisation}.", row))
+        status = str(row.get("approval_policy_met", "")).strip().lower()
+        if (exceeded and status in {"yes", "true", "1"}) or (not exceeded and status in {"no", "false", "0"}):
+            issues.append(make_issue(int(number), "approval_policy_met", "approval_status_discrepancy", "warning",
+                f"Recorded policy status is {status}. Payment £{amount:,.2f} compared with authority £{limit:,.2f} gives a different result for the amount check.", row))
     return issues
 
 

@@ -34,6 +34,8 @@ _FIELD_HEADER_TERMS: dict[str, tuple[str, ...]] = {
         "narration",
     ),
     "invoice_reference": ("invoice ref", "invoice no", "invoice number", "document no"),
+    "approval_limit_gbp": ("approval limit gbp",),
+    "approval_policy_met": ("approval policy met",),
     "invoice_amount": ("invoice amount", "invoice total", "invoice value"),
     "vendor_id": ("vendor id", "vendor code", "supplier id", "supplier code"),
     "beneficiary_id": ("beneficiary id", "beneficiary code", "recipient id", "recipient code"),

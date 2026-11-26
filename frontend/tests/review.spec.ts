@@ -208,6 +208,7 @@ test("filters select complete cases; export includes members, source dates and c
   expect(contents).toContain('"case_id"');
   expect(contents).toContain('"transaction_date"');
   expect(contents).toContain('"model_status"');
+  expect(contents).toContain('"case_invoice_paid_percent"');
   expect(contents).toContain('"model_context"');
   expect(contents).toContain("PAY-A");
   expect(contents).toContain("PAY-B");
@@ -219,6 +220,7 @@ test("filters select complete cases; export includes members, source dates and c
   const summaryContents = await readFile((await summaryFile.path())!, "utf8");
   expect(summaryContents).toContain('"case_potential_excess"');
   expect(summaryContents).toContain('"2480"');
+  expect(summaryContents).toContain('"199.20"');
   expect(summaryContents.split("\r\n")).toHaveLength(2);
   await page.getByRole("button", { name: "Reset", exact: true }).click();
   await page.getByLabel("Currency filter").selectOption("USD");
@@ -540,4 +542,14 @@ test("accessibility and desktop layouts, dark appearance and narrow fallback", a
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
+});
+
+test("a payment above recorded authority opens an audit-only case", async ({ page }) => {
+  const contents = ["transaction_id,transaction_date,account_id,counterparty,currency,amount,approval_limit_gbp,approval_policy_met",
+    "AUTH-01,2025-01-01,AP,Supplier,GBP,5100,5000,no"].join("\n");
+  await uploadCaseFile(page, contents, 1);
+  await page.getByRole("button", { name: /^Investigate / }).click();
+  const detail = page.getByRole("region", { name: "Case investigation" });
+  await expect(detail.getByRole("heading", { name: "Payment exceeds approval authority", exact: true }).first()).toBeVisible();
+  await expect(detail.locator(".observed-fact").first()).toContainText("£100.00");
 });

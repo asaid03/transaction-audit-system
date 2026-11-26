@@ -28,6 +28,9 @@ class RiskSignal:
 
 
 ISSUE_SIGNALS = {
+    "approval_authority_exceeded": RiskSignal(80, "high", "Payment exceeds recorded approval authority"),
+    "approval_evidence_gap": RiskSignal(55, "medium", "Approval authority could not be assessed"),
+    "approval_status_discrepancy": RiskSignal(55, "medium", "Recorded approval status needs reconciliation"),
     "missing_column": RiskSignal(95, "high", "Required column is missing"),
     "duplicate_transaction_id": RiskSignal(90, "high", "Duplicate transaction ID"),
     "beneficiary_overpaid": RiskSignal(90, "high", "Beneficiary received more than expected"),

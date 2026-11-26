@@ -11,6 +11,7 @@ from transaction_audit.rules import invoice_match_key
 class InvoiceSummary(TypedDict):
     currency: str
     invoice: str
+    paid_percent: str
     paid: str
     excess: str
     remaining: str
@@ -122,6 +123,7 @@ def _invoice_summary(members: list[PaymentRecord], tolerance: Decimal) -> Invoic
     difference = paid - invoice
     return {
         'currency': next(iter(currencies)), 'invoice': str(invoice), 'paid': str(paid),
+        'paid_percent': f"{paid * 100 / invoice:.2f}",
         'excess': str(max(difference, Decimal(0)) if abs(difference) > tolerance else Decimal(0)),
         'remaining': str(max(-difference, Decimal(0)) if abs(difference) > tolerance else Decimal(0)),
     }

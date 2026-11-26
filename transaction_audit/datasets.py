@@ -33,6 +33,8 @@ DATASET_DEFINITIONS = {
             "budget_line_id",
             "account_id",
             "invoice_reference",
+            "approval_limit_gbp",
+            "approval_policy_met",
             "invoice_amount",
             "budget_category",
             "description",
